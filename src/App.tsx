@@ -11,6 +11,9 @@ import { PlannedView } from "./views/Planned.tsx";
 import { GameDetail } from "./views/GameDetail.tsx";
 import { FirstRun } from "./views/FirstRun.tsx";
 import { ImportFlow, type ImportRequest } from "./views/ImportFlow.tsx";
+import { PickView, type PickRequest } from "./views/Pick.tsx";
+import { FeedbackDialog } from "./views/Feedback.tsx";
+import type { Session } from "./rec/engine.ts";
 
 export type ViewId = "home" | "library" | "discover" | "pick" | "mods" | "activity" | "collections" | "settings";
 
@@ -18,7 +21,7 @@ const NAV: { id: ViewId; label: string; icon: string; phase?: number }[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "library", label: "Library", icon: "library" },
   { id: "discover", label: "Discover", icon: "discover", phase: 4 },
-  { id: "pick", label: "Pick for me", icon: "pick", phase: 2 },
+  { id: "pick", label: "Pick for me", icon: "pick" },
   { id: "mods", label: "Mods & Modpacks", icon: "mods", phase: 4 },
   { id: "activity", label: "Activity", icon: "activity" },
   { id: "collections", label: "Collections", icon: "collections" },
@@ -30,6 +33,8 @@ export interface Nav {
   openGame(id: string, view?: ViewId): void;
   startImport(r: ImportRequest): void;
   librarySearch(q: string): void;
+  /** Opens Pick for me with a ready-made session (and optionally an instant Surprise). */
+  pick(session?: Partial<Session>, surprise?: boolean): void;
 }
 
 export function App() {
@@ -39,6 +44,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importReq, setImportReq] = useState<ImportRequest | null>(null);
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
+  const [pickReq, setPickReq] = useState<PickRequest | null>(null);
 
   const nav: Nav = useMemo(
     () => ({
@@ -51,6 +57,10 @@ export function App() {
       librarySearch: (q) => {
         setPendingQuery(q);
         setView("library");
+      },
+      pick: (session, surprise) => {
+        setPickReq({ session, surprise, nonce: Date.now() });
+        setView("pick");
       },
     }),
     [],
@@ -167,7 +177,8 @@ export function App() {
               {view === "collections" && <CollectionsView nav={nav} selectedId={selectedId} />}
               {view === "activity" && <ActivityView nav={nav} />}
               {view === "settings" && <SettingsView nav={nav} />}
-              {(view === "discover" || view === "pick" || view === "mods") && <PlannedView view={view} />}
+              {view === "pick" && <PickView nav={nav} request={pickReq} />}
+              {(view === "discover" || view === "mods") && <PlannedView view={view} />}
             </>
           )}
           {showDetail && selectedId && <GameDetail key={selectedId} id={selectedId} onClose={() => setSelectedId(null)} />}
@@ -190,6 +201,7 @@ export function App() {
       </footer>
 
       {importReq && <ImportFlow req={importReq} onClose={() => setImportReq(null)} nav={nav} />}
+      <FeedbackDialog />
       <ConfirmHost />
       <Toasts />
     </div>
@@ -209,7 +221,7 @@ function subtitle(v: ViewId): string {
     case "settings":
       return "themes, profile, data and backups";
     case "pick":
-      return "session-based picker — next phase";
+      return "explainable suggestions from your own library";
     case "discover":
       return "beyond your library — later phase";
     case "mods":

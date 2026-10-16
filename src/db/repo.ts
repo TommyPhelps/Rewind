@@ -1,6 +1,7 @@
 import type { SqlDriver, SqlValue, Statement } from "./driver.ts";
 import { BACKUP_TABLES, migrate, type BackupTable } from "./schema.ts";
 import { canon } from "../lib/canon.ts";
+import type { RecEvent } from "../rec/taste.ts";
 import type {
   Collection,
   EventRow,
@@ -55,6 +56,8 @@ export function rowToGame(r: Row, tags: GameTag[] = [], lengths: GameLength[] = 
     dateDropped: str(r.date_dropped),
     multiplayer: (r.multiplayer as Game["multiplayer"]) ?? "unknown",
     endless: r.endless == null ? null : Number(r.endless) === 1,
+    scale: (r.scale as Game["scale"]) ?? null,
+    refVersion: num(r.ref_version),
     recPref: (r.rec_pref as Game["recPref"]) ?? "normal",
     metaSource: json<Record<string, string>>(r.meta_source, {}),
     legacy: json<Record<string, unknown> | null>(r.legacy_json, null),
@@ -87,6 +90,7 @@ const FIELD_COLUMNS = {
   dateDropped: "date_dropped",
   multiplayer: "multiplayer",
   endless: "endless",
+  scale: "scale",
   recPref: "rec_pref",
 } as const;
 export type GamePatch = Partial<Pick<Game, keyof typeof FIELD_COLUMNS>>;
@@ -257,7 +261,7 @@ export class Repo {
     if (!sets.length) return [];
     // Hand-edited metadata becomes the user's value.
     const ms = { ...before.metaSource };
-    for (const f of ["multiplayer", "endless", "releaseYear", "developer", "publisher", "description"]) {
+    for (const f of ["multiplayer", "endless", "scale", "releaseYear", "developer", "publisher", "description"]) {
       if ((p as Record<string, unknown>)[f] !== undefined) ms[f] = "user";
     }
     sets.push(`meta_source = ?`, `updated_at = ?`);
@@ -461,6 +465,30 @@ export class Repo {
       type: String(r.type),
       gameId: str(r.game_id),
       data: json<Record<string, unknown>>(r.data, {}),
+    }));
+  }
+
+  // ---------- recommendation history ----------
+
+  async addRecEvent(kind: string, gameId: string | null, reason: string | null = null, context: Record<string, unknown> = {}, ts = nowIso()): Promise<void> {
+    await this.db.execute(`INSERT INTO rec_events (ts, kind, game_id, reason, context) VALUES (?, ?, ?, ?, ?)`, [
+      ts,
+      kind,
+      gameId,
+      reason,
+      JSON.stringify(context),
+    ]);
+  }
+
+  async loadRecEvents(sinceIso = "1970-01-01"): Promise<RecEvent[]> {
+    const rows = await this.db.select<Row>(`SELECT * FROM rec_events WHERE ts >= ? ORDER BY ts, id`, [sinceIso]);
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ts: String(r.ts),
+      kind: String(r.kind),
+      gameId: str(r.game_id),
+      reason: str(r.reason),
+      context: json<Record<string, unknown>>(r.context, {}),
     }));
   }
 

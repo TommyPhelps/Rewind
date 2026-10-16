@@ -11,13 +11,13 @@ Everything lives in one SQLite file on your PC. No account, no server, no teleme
 | Phase | What | State |
 |---|---|---|
 | 0 | Inspect the old REWIND artifact, its data, and the build options | Done |
-| 1 | Tauri app, SQLite, dark Y2K design system, library import, navigation, Windows build | **Built (this version)** |
-| 2 | Pick for me (session picker, explainable scores), Friction Check, sessions, stats | Planned |
+| 1 | Tauri app, SQLite, dark Y2K design system, library import, navigation, Windows build | Built (v2.0.0) |
+| 2 | Recommendation engine: Pick for me, Friction Check, taste profile, presets | **Built (v2.1.0)** |
 | 3 | Steam import, metadata and cover art, series navigator, advanced collections | Planned |
 | 4 | Minecraft modpack discovery, modding companion, Discover, low-stimulation mode | Planned |
 | 5 | Backup completion, performance, polish | Planned |
 
-Screens for later phases are shown in the sidebar with a `P2`/`P4` tag and open a placeholder that
+Screens for later phases are shown in the sidebar with a `P4` tag and open a placeholder that
 says what's coming. Nothing in them is simulated.
 
 ### What Phase 1 does
@@ -39,6 +39,42 @@ says what's coming. Nothing in them is simulated.
   and an automatic safety snapshot before every import or restore.
 - **Windows**: remembers window size/position, pulls the window back if a monitor disappears, minimum
   size 960×600, works with display scaling, keyboard shortcuts (see Settings → Keyboard).
+
+### What Phase 2 adds: Pick for me
+
+A deterministic recommender (no AI service, no internet) that ranks the games you own for *this* session
+and says why.
+
+- **Optional session settings**: experience (immersive, story, mastery, cozy, exploration, building,
+  strategy, nostalgic, unusual), energy, time available, commitment, structure, difficulty, things to
+  avoid, continue vs. start new. Nothing is required; the last session is remembered.
+- **Presets**: five built in (Low-energy evening, Story night, Challenge me, Quick break, Weekend deep dive)
+  plus your own.
+- **Explanations**: every suggestion lists why it fits and why it might not, a fit band (not a fake
+  percentage), confidence, commitment estimate, and where each piece of data came from. "Show scoring"
+  reveals each factor.
+- **Friction Check**: Ready to play / Something completely different / Not in the mood (take a break,
+  revisit later). No streaks, goals or penalties.
+- **Passing**: "Not this one" asks why (optional). The game is shown less for a while and the note says
+  until when; it is never banned. Reasons like "too grindy" nudge your preferences and fade after 60 days.
+  Unlimited "Next".
+- **Surprise me**: one click, picked among strong matches (seeded, so it's repeatable).
+- **Your taste**: what REWIND believes and why: tags you lean towards/away from, trait preferences with
+  their sources, how your profile lines are read, drop reasons, and a **time played vs. enjoyment** table
+  for high-playtime games with no enjoyment info, so you can answer with one click.
+- **Weights**: seven sliders, normalised before scoring.
+- When you mark a game **Dropped** it asks why (optional); **Completed** asks how it was (optional).
+
+How it separates time spent from enjoyment: enjoyment comes only from ratings, favorites, your profile's
+enjoyed / struggled lists, finishing, dropping and your answers. Playtime is a weak hint used only when
+nothing else is known, never for multiplayer games, and always labelled as such. "Struggled after many
+restarts / replaying" is read as burnout on that game, not a dislike of its genre.
+
+**Data quality.** 247 of the 404 imported games had no tags or player info. Phase 2 bundles a *REWIND
+reference* table (`src/data/referenceTraits.ts`) of estimated tags, player modes and length classes for
+236 of them, plus extra trait tags (guided, aimless, grind, punishing…) for well-known games. It is
+labelled `est.` everywhere, only fills unknown fields, never overwrites your edits, and is applied to a
+game only once, so anything you remove stays removed. 11 obscure titles are left unknown.
 
 ### What happened to the old app's data
 
@@ -136,7 +172,12 @@ tools/          icon generator, browser preview build + dev SQL bridge (developm
 ## Testing record
 
 Automated (run here and in CI):
-- 15 tests: schema migrations (incl. idempotence and concurrent init), the artifact importer (status
+- 33 tests, including 17 for recommendations: KOTOR II as the follow-up to KOTOR, souls-likes for
+  mastery (but not 161h Elden Ring as a "new" pick), gentle games for cozy/low energy, Kenshi / Project
+  Zomboid / Skyrim deprioritised but never banned, burnout not poisoning story RPGs, playtime ≠ enjoyment,
+  passes fading after their cooldown, determinism, multiplayer exclusion, and a v1 → v2 database upgrade
+  that keeps every game, note and setting.
+- Phase 1 tests: schema migrations (incl. idempotence and concurrent init), the artifact importer (status
   mapping, header-row detection, Up Next order, sources, re-import merge, rollback on failure),
   edits/lengths/tags/collections, search/filter/sort, backup round trip (replace and merge), backup validation.
 - The importer was also run against the real 405-row export: 404 imported, 1 skipped, 157 matched the

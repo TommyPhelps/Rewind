@@ -48,6 +48,14 @@ export const REC_PREFS: { id: RecPref; label: string }[] = [
   { id: "never", label: "Never suggest" },
 ];
 
+export type Scale = "short" | "medium" | "long" | "endless";
+export const SCALES: { id: Scale; label: string; hint: string }[] = [
+  { id: "short", label: "Short", hint: "under ~12h" },
+  { id: "medium", label: "Medium", hint: "~12–35h" },
+  { id: "long", label: "Long", hint: "35h+" },
+  { id: "endless", label: "Endless", hint: "no real ending" },
+];
+
 export type LengthKind = "main" | "main_extras" | "completionist";
 export const LENGTH_KINDS: { id: LengthKind; label: string }[] = [
   { id: "main", label: "Main story" },
@@ -65,6 +73,8 @@ export const SOURCE_LABEL: Record<string, string> = {
   rewind_artifact: "REWIND artifact import",
   steam: "Steam",
   import: "Backup import",
+  reference: "REWIND reference (unverified estimate)",
+  inferred: "Inferred from tags",
 };
 
 export interface GameLength {
@@ -106,6 +116,8 @@ export interface Game {
   dateDropped: string | null;
   multiplayer: Multiplayer;
   endless: boolean | null;
+  scale: Scale | null;
+  refVersion: number | null;
   recPref: RecPref;
   metaSource: Record<string, string>;
   legacy: Record<string, unknown> | null;

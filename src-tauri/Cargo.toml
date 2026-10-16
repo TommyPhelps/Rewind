@@ -1,6 +1,6 @@
 [package]
 name = "rewind"
-version = "2.0.0"
+version = "2.1.0"
 description = "REWIND - personal gaming companion"
 authors = ["Tommy"]
 edition = "2021"

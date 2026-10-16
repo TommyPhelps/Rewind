@@ -30,7 +30,9 @@ test("canon matches the artifact's rules", () => {
 
 test("schema migrates once and is idempotent", async () => {
   const db = nodeDriver();
-  assert.deepEqual(await migrate(db), [SCHEMA_VERSION]);
+  const all = await migrate(db);
+  assert.equal(all[all.length - 1], SCHEMA_VERSION);
+  assert.deepEqual(all, [...all].sort((a, b) => a - b));
   assert.deepEqual(await migrate(db), []);
 });
 
@@ -171,4 +173,37 @@ test("concurrent init calls share one migration", async () => {
   const [a, b] = await Promise.all([repo.init(), repo.init()]);
   assert.deepEqual(a, b);
   assert.equal(await repo.countGames(), 0);
+});
+
+test("upgrading a Phase 1 (schema v1) library keeps every game, note and setting", async () => {
+  const { MIGRATIONS } = await import("../src/db/schema.ts");
+  const { applyReferenceData } = await import("../src/migrate/reference.ts");
+  const db = nodeDriver();
+  // Build a genuine v1 database the way Phase 1 did.
+  await db.execute(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+  await db.batch([...MIGRATIONS[0].sql.map((sql) => ({ sql })), { sql: `INSERT INTO meta (key, value) VALUES ('schema_version', '1')` }]);
+  const v1 = new Repo(db);
+  (v1 as unknown as { initPromise: Promise<number[]> }).initPromise = Promise.resolve([]);
+  for (const t of ["games", "game_lengths", "game_tags", "collections", "collection_games", "playthroughs", "sessions", "events", "settings"]) {
+    const cols = await db.select<{ name: string }>(`PRAGMA table_info(${t})`);
+    (v1 as unknown as { columns: Map<string, Set<string>> }).columns.set(t, new Set(cols.map((c) => c.name)));
+  }
+  await applyArtifactPlan(v1, buildArtifactPlan(parseArtifactBackup(fixture())));
+  const before = await db.select<Record<string, unknown>>(`SELECT id, title, notes, rating, status, imported_playtime_min FROM games ORDER BY id`);
+  await db.execute(`UPDATE games SET notes = 'keep me' WHERE title = 'Kenshi'`);
+  await db.execute(`INSERT INTO settings (key, value) VALUES ('app_settings', '{"theme":"amber"}')`);
+
+  // Open it with the current app.
+  const repo = new Repo(db);
+  const applied = await repo.init();
+  assert.ok(applied.includes(2));
+  await applyReferenceData(repo);
+  const after = await db.select<Record<string, unknown>>(`SELECT id, title, notes, rating, status, imported_playtime_min FROM games ORDER BY id`);
+  assert.equal(after.length, before.length);
+  assert.deepEqual(after.map((g) => [g.id, g.title, g.rating, g.status, g.imported_playtime_min]), before.map((g) => [g.id, g.title, g.rating, g.status, g.imported_playtime_min]));
+  assert.equal(after.find((g) => g.title === "Kenshi")!.notes, "keep me");
+  assert.equal((await repo.getSetting<{ theme: string }>("app_settings", { theme: "" })).theme, "amber");
+  assert.equal((await repo.loadCollections())[0].gameIds.length, 3, "Up Next intact");
+  await repo.addRecEvent("pass", null, "not_tonight");
+  assert.equal((await repo.loadRecEvents()).length, 1);
 });

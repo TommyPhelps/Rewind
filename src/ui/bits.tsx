@@ -69,9 +69,9 @@ export function Stars({ value, onChange }: { value: number | null; onChange?(v: 
 }
 
 export function SourceBadge({ source }: { source: string }) {
-  const est = source === "legacy_table" || source === "ai_estimate";
+  const est = source === "legacy_table" || source === "legacy" || source === "ai_estimate" || source === "reference";
   return (
-    <span className={"badge" + (est ? " est" : source === "user" ? " you" : "")} title={SOURCE_LABEL[source] ?? source}>
+    <span className={"badge" + (est ? " est" : source === "user" ? " you" : "")} title={SOURCE_LABEL[source === "legacy" ? "legacy_table" : source] ?? source}>
       {source === "user" ? "you" : est ? "est." : source}
     </span>
   );

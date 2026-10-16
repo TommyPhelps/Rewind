@@ -53,6 +53,7 @@ const ENUMS: Record<string, Record<string, string[]>> = {
     install_status: ["installed", "not_installed", "unknown"],
     multiplayer: ["solo", "solo_and_mp", "coop_focused", "mp_required", "unknown"],
     rec_pref: ["normal", "boost", "never"],
+    scale: ["short", "medium", "long", "endless"],
   },
   game_lengths: { kind: ["main", "main_extras", "completionist"] },
   playthroughs: { outcome: ["in_progress", "paused", "completed", "dropped"] },
@@ -68,6 +69,7 @@ const REQUIRED: Record<BackupTable, string[]> = {
   sessions: ["id", "game_id", "started_at"],
   events: ["ts", "type"],
   settings: ["key", "value"],
+  rec_events: ["ts", "kind"],
 };
 
 export type ValidationResult = { ok: true; backup: RewindBackup; warnings: string[] } | { ok: false; errors: string[] };
@@ -215,7 +217,7 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
     stmts.push(...repo.wipeStatements());
     for (const t of BACKUP_TABLES) {
       for (const row of d[t]) {
-        if ("game_id" in row && t !== "events" && !gameIds.has(String(row.game_id))) continue;
+        if (row.game_id != null && t !== "events" && t !== "rec_events" && !gameIds.has(String(row.game_id))) continue;
         stmts.push(repo.insertStatement(t, row, t === "game_tags" || t === "collection_games" ? "ignore" : "insert"));
       }
     }
@@ -290,6 +292,16 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
     if (have.has(evKey(row))) continue;
     const { id: _id, ...noId } = row;
     stmts.push(repo.insertStatement("events", noId));
+  }
+  // Recommendation history: same de-duplication as events.
+  const recs = await repo.driver.select<Row>(`SELECT ts, kind, game_id FROM rec_events`);
+  const recKey = (e: Row) => `${e.ts}|${e.kind}|${e.game_id ?? ""}`;
+  const haveRec = new Set(recs.map(recKey));
+  for (const e of d.rec_events ?? []) {
+    const row: Row = { ...e, game_id: e.game_id == null ? null : remap(e.game_id) };
+    if (haveRec.has(recKey(row))) continue;
+    const { id: _rid, ...noId } = row;
+    stmts.push(repo.insertStatement("rec_events", noId));
   }
   // Settings: only keys you don't have yet.
   for (const s of d.settings) stmts.push(repo.insertStatement("settings", s, "ignore"));

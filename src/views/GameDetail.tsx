@@ -16,9 +16,15 @@ import {
   type Game,
 } from "../lib/types.ts";
 import { openExternal } from "../platform/native.ts";
+import { useTaste } from "../state/recs.ts";
+import { DEFAULT_WEIGHTS, EMPTY_SESSION, BAND_LABEL, recommend } from "../rec/engine.ts";
+import { TRAIT_LABEL, TRAITS } from "../rec/traits.ts";
+import { REASONS } from "../rec/taste.ts";
+import { SCALES } from "../lib/types.ts";
 
 export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
-  const { gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections } = useApp();
+  const { games, gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections, profile, recEvents } = useApp();
+  const { taste, series } = useTaste();
   const g = gameById.get(id);
   const [width, setWidth] = useState(settings.detailWidth);
   const [dragging, setDragging] = useState(false);
@@ -105,6 +111,8 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
           </div>
         </div>
 
+        <WhySection gameId={id} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={settings.useUnverifiedLengths} />
+
         <details className="sec" open>
           <summary>Overview</summary>
           <div className="body">
@@ -122,13 +130,13 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                 </select>
               </label>
               <label className="lbl">
-                Players {g.metaSource.multiplayer && <SourceBadge source={g.metaSource.multiplayer} />}
+                <span className="lbl-row">Players {g.metaSource.multiplayer && <SourceBadge source={g.metaSource.multiplayer} />}</span>
                 <select className="select" value={g.multiplayer} onChange={(e) => set({ multiplayer: e.target.value as Game["multiplayer"] })}>
                   {MULTIPLAYER.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
               </label>
               <label className="lbl">
-                Endless / sandbox {g.metaSource.endless && <SourceBadge source={g.metaSource.endless} />}
+                <span className="lbl-row">Endless / sandbox {g.metaSource.endless && <SourceBadge source={g.metaSource.endless} />}</span>
                 <select
                   className="select"
                   value={g.endless == null ? "" : g.endless ? "1" : "0"}
@@ -148,7 +156,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                 <CommitInput value={g.storefront ?? ""} placeholder="unknown" onCommit={(v) => set({ storefront: v.trim() || null })} />
               </label>
               <label className="lbl" style={{ gridColumn: "1 / -1" }}>
-                Suggestions (used by Pick for me in Phase 2)
+                In Pick for me
                 <select className="select" value={g.recPref} onChange={(e) => set({ recPref: e.target.value as Game["recPref"] })}>
                   {REC_PREFS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
@@ -194,6 +202,22 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                 </div>
               );
             })}
+            <div className="lenrow">
+              <span className="dim">Length class</span>
+              <span>
+                {g.scale ? (
+                  <SourceBadge source={g.metaSource.scale ?? "user"} />
+                ) : (
+                  <span className="dim">{g.endless ? "endless flag" : g.lengths.length ? "from hours" : "unknown"}</span>
+                )}
+              </span>
+              <select className="select" value={g.scale ?? ""} onChange={(e) => set({ scale: (e.target.value || null) as Game["scale"] })} aria-label="Length class">
+                <option value="">—</option>
+                {SCALES.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </div>
             {g.lengths.some((l) => l.source === "legacy_table" || l.source === "ai_estimate") && (
               <div className="dim" style={{ fontSize: "0.8rem" }}>
                 <span className="badge est">est.</span> = carried over from the old REWIND table; never verified. Type your own hours to override.
@@ -238,6 +262,34 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
               <input className="field grow" placeholder="add tags, comma separated" value={newTag} onChange={(e) => setNewTag(e.target.value)} />
               <button className="btn sm" type="submit">Add</button>
             </form>
+          </div>
+        </details>
+
+        <details className="sec">
+          <summary>
+            Traits <span className="right dim mono" style={{ fontSize: "0.7rem" }}>inferred from tags</span>
+          </summary>
+          <div className="body">
+            <TraitBars values={taste.traits.get(g.id)?.values} />
+            <div className="dim" style={{ fontSize: "0.8rem" }}>
+              Worked out from the tags above, so they're only as accurate as the tags. Add tags like <span className="mono">guided</span>,{" "}
+              <span className="mono">aimless</span>, <span className="mono">grind</span>, <span className="mono">punishing</span>, <span className="mono">gentle</span>,{" "}
+              <span className="mono">dialogue</span>, <span className="mono">setup</span>, <span className="mono">quicksession</span> or <span className="mono">tense</span> to correct them.
+            </div>
+            {recEvents.some((e) => e.gameId === g.id && (e.kind === "pass" || e.kind === "drop")) && (
+              <div style={{ fontSize: "0.82rem" }}>
+                <div className="mono dim" style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Your passes and drop reasons</div>
+                {recEvents
+                  .filter((e) => e.gameId === g.id && (e.kind === "pass" || e.kind === "drop"))
+                  .slice(-6)
+                  .reverse()
+                  .map((e) => (
+                    <div key={e.id}>
+                      {fmtDateTime(e.ts)} · {e.kind === "pass" ? "passed" : "dropped"}: {REASONS[e.reason ?? ""]?.label ?? e.reason ?? "no reason"}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </details>
 
@@ -435,4 +487,83 @@ export function describeEvent(e: EventRow, title?: string): string {
     default:
       return `${t}${e.type}`;
   }
+}
+
+function WhySection({
+  gameId,
+  games,
+  taste,
+  series,
+  profile,
+  recEvents,
+  allowUnverified,
+}: {
+  gameId: string;
+  games: Game[];
+  taste: ReturnType<typeof useTaste>["taste"];
+  series: ReturnType<typeof useTaste>["series"];
+  profile: ReturnType<typeof useApp>["profile"];
+  recEvents: ReturnType<typeof useApp>["recEvents"];
+  allowUnverified: boolean;
+}) {
+  const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified });
+  const rec = r.results.find((x) => x.game.id === gameId);
+  return (
+    <details className="sec" open>
+      <summary>
+        Why REWIND would suggest it
+        <span className="right">{rec ? <span className={"band b-" + rec.band}>{BAND_LABEL[rec.band]}</span> : <span className="dim mono" style={{ fontSize: "0.7rem" }}>not suggested</span>}</span>
+      </summary>
+      <div className="body" style={{ fontSize: "0.86rem" }}>
+        {!rec ? (
+          <div className="dim">
+            Left out of suggestions:{" "}
+            {(() => {
+              const g = games.find((x) => x.id === gameId)!;
+              if (g.tags.some((t) => t.tag === "tool")) return "it's a tool or test client.";
+              if (g.status === "not_interested") return "marked Not interested.";
+              if (g.recPref === "never") return "set to never suggest.";
+              if (g.multiplayer === "mp_required" || g.multiplayer === "coop_focused") return "it needs other players (change Players above if that's wrong).";
+              if (g.status === "completed") return "you've finished it (Pick for me includes finished games under 'Something nostalgic').";
+              if (g.ownership !== "owned") return "you don't own it.";
+              return "excluded by current settings.";
+            })()}
+          </div>
+        ) : (
+          <>
+            <div className="dim">With no mood or time set — Pick for me adjusts this to each session.</div>
+            {rec.pros.length > 0 && (
+              <ul className="pros">
+                {rec.pros.map((p) => <li key={p.text}>{p.text}</li>)}
+              </ul>
+            )}
+            {rec.cons.length > 0 && (
+              <ul className="cons">
+                {rec.cons.map((p) => <li key={p.text}>{p.text}</li>)}
+              </ul>
+            )}
+            <div className="mono dim" style={{ fontSize: "0.72rem" }}>
+              {rec.confidence.level} confidence · {rec.sources.join(" · ")}
+            </div>
+          </>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function TraitBars({ values }: { values: Record<string, number | null> | undefined }) {
+  if (!values) return null;
+  const known = TRAITS.filter((t) => values[t] != null);
+  if (!known.length) return <div className="dim" style={{ fontSize: "0.85rem" }}>No tags yet, so no traits.</div>;
+  return (
+    <div className="traitbars">
+      {known.map((t) => (
+        <div key={t} className="tb">
+          <span>{TRAIT_LABEL[t]}</span>
+          <span className="track"><span className="fill" style={{ width: `${(values[t] ?? 0) * 100}%` }} /></span>
+        </div>
+      ))}
+    </div>
+  );
 }

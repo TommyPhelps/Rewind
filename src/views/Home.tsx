@@ -53,6 +53,22 @@ export function HomeView({ nav }: { nav: Nav }) {
           </div>
         </div>
 
+        <div className="panel">
+          <div className="hd">
+            Tonight
+            <span className="right dim mono" style={{ fontSize: "0.72rem", textTransform: "none", letterSpacing: 0 }}>one click opens Pick for me</span>
+          </div>
+          <div className="bd row tonight">
+            <button className="btn" onClick={() => nav.pick({ energy: "low", time: "1to2", avoid: ["difficulty", "setup"] })}>Low energy</button>
+            <button className="btn" onClick={() => nav.pick({ time: "lt30", commitment: "one", avoid: ["setup"] })}>Under 30 minutes</button>
+            <button className="btn" onClick={() => nav.pick({ experience: "story", energy: "medium" })}>A good story</button>
+            <button className="btn" onClick={() => nav.pick({ experience: "mastery", energy: "high", difficulty: "challenging" })}>Up for a challenge</button>
+            <button className="btn" onClick={() => nav.pick({ progress: "continue" })}>Continue something</button>
+            <span className="grow" />
+            <button className="btn primary" onClick={() => nav.pick(undefined, true)}>Surprise me</button>
+          </div>
+        </div>
+
         <div className="grid2">
           <div className="stack">
             <div className="panel">
@@ -156,7 +172,7 @@ export function HomeView({ nav }: { nav: Nav }) {
                   <dd className="num">{stats.fav}</dd>
                 </dl>
                 <div className="dim" style={{ fontSize: "0.82rem", marginTop: "0.6rem" }}>
-                  Steam import and verified metadata arrive in Phase 3; until then unknown values stay unknown.
+                  Tags and lengths marked est. are estimates (old REWIND table or REWIND reference); Steam import and verified metadata arrive in Phase 3.
                 </div>
               </div>
             </div>

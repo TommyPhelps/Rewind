@@ -3,6 +3,8 @@ import { Repo, type GamePatch } from "../db/repo.ts";
 import { createDriver, ensureWindowOnScreen, getAppInfo, type AppInfo } from "../platform/native.ts";
 import { DEFAULT_SETTINGS, type AppSettings, type Collection, type Game, type GamingProfile, type LengthKind } from "../lib/types.ts";
 import { DEFAULT_PROFILE } from "../data/profileDefaults.ts";
+import { applyReferenceData } from "../migrate/reference.ts";
+import type { RecEvent } from "../rec/taste.ts";
 
 export interface Toast {
   id: number;
@@ -28,6 +30,12 @@ interface Store {
   settings: AppSettings;
   profile: GamingProfile;
   firstRun: boolean;
+  /** Recommendation history: accepts, passes, drop reasons, resets. */
+  recEvents: RecEvent[];
+  addRecEvent(kind: string, gameId: string | null, reason?: string | null, context?: Record<string, unknown>): Promise<void>;
+  /** Asks "why did you drop it?" / "how was it?" after a single game's status changes. */
+  feedbackFor: { gameId: string; kind: "dropped" | "completed" } | null;
+  setFeedbackFor(f: { gameId: string; kind: "dropped" | "completed" } | null): void;
   reloadAll(): Promise<void>;
   reloadCollections(): Promise<void>;
   updateGame(id: string, patch: GamePatch): Promise<void>;
@@ -83,6 +91,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettingsState] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [profile, setProfileState] = useState<GamingProfile>(DEFAULT_PROFILE);
   const [firstRun, setFirstRun] = useState(false);
+  const [recEvents, setRecEvents] = useState<RecEvent[]>([]);
+  const [feedbackFor, setFeedbackFor] = useState<Store["feedbackFor"]>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmState, setConfirmState] = useState<Store["confirmState"]>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -110,10 +120,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reloadGames = useCallback(async () => setGames(await repo.loadGames()), [repo]);
   const reloadCollections = useCallback(async () => setCollections(await repo.loadCollections()), [repo]);
+  const reloadRecEvents = useCallback(async () => setRecEvents(await repo.loadRecEvents()), [repo]);
   const reloadAll = useCallback(async () => {
-    await Promise.all([reloadGames(), reloadCollections()]);
+    // Newly imported games get the bundled reference estimates (only where unknown).
+    await applyReferenceData(repo).catch(() => undefined);
+    await Promise.all([reloadGames(), reloadCollections(), reloadRecEvents()]);
     setProfileState(await repo.getSetting("profile", DEFAULT_PROFILE));
-  }, [repo, reloadGames, reloadCollections]);
+  }, [repo, reloadGames, reloadCollections, reloadRecEvents]);
 
   useEffect(() => {
     (async () => {
@@ -136,11 +149,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const replaceGame = useCallback((g: Game) => setGames((gs) => gs.map((x) => (x.id === g.id ? g : x))), []);
 
+  const gamesRef = useRef<Game[]>([]);
+  gamesRef.current = games;
   const updateGame = useCallback(
     async (id: string, patch: GamePatch) => {
-      await run(async () => replaceGame(await repo.updateGame(id, patch)));
+      const before = gamesRef.current.find((g) => g.id === id);
+      const updated = await run(async () => {
+        const g = await repo.updateGame(id, patch);
+        replaceGame(g);
+        return g;
+      });
+      if (updated && before && patch.status && patch.status !== before.status) {
+        if (patch.status === "dropped") setFeedbackFor({ gameId: id, kind: "dropped" });
+        if (patch.status === "completed" && updated.rating == null) setFeedbackFor({ gameId: id, kind: "completed" });
+      }
     },
     [repo, run, replaceGame],
+  );
+
+  const addRecEvent = useCallback(
+    async (kind: string, gameId: string | null, reason: string | null = null, context: Record<string, unknown> = {}) => {
+      await run(async () => {
+        await repo.addRecEvent(kind, gameId, reason, context);
+        await reloadRecEvents();
+      });
+    },
+    [repo, run, reloadRecEvents],
   );
 
   const bulkUpdate = useCallback(
@@ -219,6 +253,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settings,
     profile,
     firstRun,
+    recEvents,
+    addRecEvent,
+    feedbackFor,
+    setFeedbackFor,
     reloadAll,
     reloadCollections,
     updateGame,

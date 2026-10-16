@@ -107,6 +107,26 @@ export const MIGRATIONS: { version: number; name: string; sql: string[] }[] = [
       )`,
     ],
   },
+  {
+    version: 2,
+    name: "recommendations",
+    sql: [
+      // Coarse length class: 'short' | 'medium' | 'long' | 'endless'. Source kept in meta_source.scale.
+      `ALTER TABLE games ADD COLUMN scale TEXT`,
+      // Which version of the bundled reference data has been offered to this game (never re-applied).
+      `ALTER TABLE games ADD COLUMN ref_version INTEGER`,
+      `CREATE TABLE rec_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        game_id TEXT,
+        reason TEXT,
+        context TEXT NOT NULL DEFAULT '{}'
+      )`,
+      `CREATE INDEX rec_events_game ON rec_events(game_id, ts)`,
+      `CREATE INDEX rec_events_ts ON rec_events(ts)`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -122,6 +142,7 @@ export const BACKUP_TABLES = [
   "sessions",
   "events",
   "settings",
+  "rec_events",
 ] as const;
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 
