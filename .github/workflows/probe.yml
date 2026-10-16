@@ -1,0 +1,30 @@
+name: Steam endpoint probe
+
+# Checks the public Steam endpoints REWIND uses still answer the way the app expects.
+# Manual only (Actions tab -> Steam endpoint probe -> Run workflow) or pushes to the 'probe' branch.
+on:
+  workflow_dispatch:
+  push:
+    branches: [probe]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe
+        run: node tools/probe-steam.mjs | tee probe.txt
+      - name: Save report to probe-logs branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp probe.txt "$RUNNER_TEMP/probe.txt" || true
+          cd "$RUNNER_TEMP" && rm -rf r && mkdir r && cd r && git init -q && cp ../probe.txt .
+          git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com add . && git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com commit -qm "probe ${GITHUB_RUN_NUMBER}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/probe-logs
