@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-preview/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.DS_Store
+# Personal library exports stay off GitHub.
+rewind-*.json
+!tests/fixtures/*.json

@@ -1,0 +1,120 @@
+name: Windows build
+
+# Builds REWIND on a GitHub-hosted Windows runner and uploads the installers.
+# Runs on every push to main, on pull requests, on demand (Actions tab -> Run workflow),
+# and on version tags (v2.0.0 etc.), which also publish a GitHub Release.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Rust (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning::No package-lock.json yet. Installing fresh; the generated lockfiles are uploaded as the 'lockfiles' artifact so they can be committed."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Unit tests (schema, migration, backups, filters)
+        run: npm test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Windows app and installers
+        shell: bash
+        run: |
+          if [ -f src-tauri/Cargo.lock ]; then
+            npx tauri build -- --locked
+          else
+            npx tauri build
+          fi
+
+      - name: Collect installers
+        id: collect
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          mkdir -p out
+          cp src-tauri/target/release/bundle/nsis/*.exe out/
+          cp src-tauri/target/release/bundle/msi/*.msi out/
+          cp src-tauri/target/release/rewind.exe "out/REWIND_${VERSION}_x64_portable.exe"
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          ls -la out
+          cat out/SHA256SUMS.txt
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: REWIND-${{ steps.collect.outputs.version }}-windows-x64
+          path: out/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload lockfiles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lockfiles
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Runs after the upload so a type nit never costs you the installer,
+      # but it still turns the run red so it gets fixed.
+      - name: Type check
+        run: npm run typecheck
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: REWIND-*-windows-x64
+          path: dist
+          merge-multiple: true
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

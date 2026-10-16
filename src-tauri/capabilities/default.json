@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the main REWIND window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-center",
+    "dialog:default",
+    "opener:default",
+    "window-state:default"
+  ]
+}

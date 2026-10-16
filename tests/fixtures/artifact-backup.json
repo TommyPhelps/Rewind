@@ -1,0 +1,36 @@
+{
+  "state": {
+    "v": 1,
+    "settings": { "longMin": 20, "shortMax": 10, "rerolls": 5, "basis": "plus", "theme": "auto", "solo": true },
+    "slots": {
+      "long": { "queue": ["star wars knights of the old republic", "star wars knights of the old republic 2 the sith lords"], "rerolls": 5, "started": false, "missing": [], "mod": null },
+      "short": { "queue": ["kenshi"], "rerolls": 5, "started": false, "missing": [], "mod": null }
+    },
+    "pending": null,
+    "high": { "cur": null, "hp": {}, "passed": {} },
+    "mods": { "mine": [], "rej": {}, "hp": {}, "batch": [], "mc": null },
+    "awards": [],
+    "log": [
+      { "t": 1792118250254, "x": "ACCEPT long: STAR WARS Knights of the Old Republic" },
+      { "t": 1792118257503, "x": "ACCEPT short: Kenshi" }
+    ],
+    "penalty": null,
+    "stats": { "skips": 0, "sinceFinish": 0, "finished": 1, "freeRerolls": 0, "freeChanges": 0, "passes": 0 }
+  },
+  "lib0": {
+    "g": [
+      { "id": "game", "n": "game" },
+      { "id": "kenshi", "n": "Kenshi", "p": 32.6, "st": "a", "k": "short" },
+      { "id": "star wars knights of the old republic", "n": "STAR WARS™ Knights of the Old Republic™", "p": 37.4, "st": "a", "k": "long" },
+      { "id": "star wars knights of the old republic 2 the sith lords", "n": "STAR WARS™ Knights of the Old Republic™ II - The Sith Lords™", "p": 4.5, "st": "q", "k": "long" },
+      { "id": "portal", "n": "Portal", "p": 3.1, "st": "d", "da": 1790000000000, "r": 2, "nt": "Loved the ending" },
+      { "id": "my obscure indie", "n": "My Obscure Indie", "h": 6, "e": 0, "s": 1 }
+    ]
+  },
+  "lib1": {
+    "g": [
+      { "id": "terraria", "n": "Terraria", "p": 12, "hd": 1 },
+      { "id": "witcher 3 wild hunt", "n": "The Witcher 3: Wild Hunt", "p": 140.25, "r": -1 }
+    ]
+  }
+}

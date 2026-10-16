@@ -1,0 +1,438 @@
+import { useEffect, useRef, useState } from "react";
+import { useApp } from "../state/store.tsx";
+import { Icon } from "../ui/Icon.tsx";
+import { CommitInput, Cover, fmtDate, fmtDateTime, SourceBadge, Stars } from "../ui/bits.tsx";
+import { cleanTitle } from "../lib/canon.ts";
+import { effectiveLength, fmtHours, fmtPlaytime } from "../lib/library.ts";
+import {
+  INSTALL,
+  LENGTH_KINDS,
+  MULTIPLAYER,
+  OWNERSHIP,
+  REC_PREFS,
+  SOURCE_LABEL,
+  STATUSES,
+  type EventRow,
+  type Game,
+} from "../lib/types.ts";
+import { openExternal } from "../platform/native.ts";
+
+export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
+  const { gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections } = useApp();
+  const g = gameById.get(id);
+  const [width, setWidth] = useState(settings.detailWidth);
+  const [dragging, setDragging] = useState(false);
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [newTag, setNewTag] = useState("");
+  const startX = useRef(0);
+  const startW = useRef(0);
+
+  useEffect(() => {
+    void repo.driver
+      .select<Record<string, unknown>>(`SELECT * FROM events WHERE game_id = ? ORDER BY ts DESC, id DESC LIMIT 30`, [id])
+      .then((rows) => setEvents(rows.map((r) => ({ id: Number(r.id), ts: String(r.ts), type: String(r.type), gameId: id, data: JSON.parse(String(r.data || "{}")) }))));
+  }, [id, repo, g?.updatedAt]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e: MouseEvent) => setWidth(Math.max(300, Math.min(720, startW.current + (startX.current - e.clientX))));
+    const up = () => {
+      setDragging(false);
+      setSettings({ detailWidth: width });
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+  }, [dragging, width, setSettings]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector(".shade") && !(e.target as HTMLElement)?.closest?.("input, textarea, select")) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  if (!g) return null;
+  const set = (patch: Parameters<typeof updateGame>[1]) => void updateGame(g.id, patch);
+  const inCols = new Set(collections.filter((c) => c.gameIds.includes(g.id)).map((c) => c.id));
+
+  return (
+    <aside className="detail" style={{ width: `min(${width}px, 46vw)` }} aria-label={`Details for ${cleanTitle(g.title)}`}>
+      <div
+        className={"resize" + (dragging ? " on" : "")}
+        onMouseDown={(e) => {
+          startX.current = e.clientX;
+          startW.current = width;
+          setDragging(true);
+          e.preventDefault();
+        }}
+        onDoubleClick={() => {
+          setWidth(400);
+          setSettings({ detailWidth: 400 });
+        }}
+        title="Drag to resize (double-click to reset)"
+        role="separator"
+        aria-orientation="vertical"
+      />
+      <div className="titlebar" style={{ minHeight: "2.4rem", padding: "0 0.4rem 0 0.85rem" }}>
+        <span className="mono dim" style={{ fontSize: "0.74rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Game details</span>
+        <div className="right">
+          <button className="btn ghost icon sm" onClick={onClose} aria-label="Close details (Esc)" title="Close (Esc)">
+            <Icon name="x" />
+          </button>
+        </div>
+      </div>
+      <div className="scroll">
+        <div className="dhead">
+          <Cover game={g} />
+          <div style={{ display: "grid", gap: "0.45rem", minWidth: 0 }}>
+            <TitleEditor game={g} onSave={(title) => set({ title })} />
+            <div className="row" style={{ gap: "0.6rem" }}>
+              <Stars value={g.rating} onChange={(rating) => set({ rating })} />
+              <button className={"star" + (g.favorite ? " on" : "")} onClick={() => set({ favorite: !g.favorite })} aria-label={g.favorite ? "Remove favorite" : "Mark favorite"} title="Favorite">
+                <Icon name="star" />
+              </button>
+            </div>
+            <select className="select" value={g.status} onChange={(e) => set({ status: e.target.value as Game["status"] })} aria-label="Status">
+              {STATUSES.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <details className="sec" open>
+          <summary>Overview</summary>
+          <div className="body">
+            <div className="form2">
+              <label className="lbl">
+                Ownership
+                <select className="select" value={g.ownership} onChange={(e) => set({ ownership: e.target.value as Game["ownership"] })}>
+                  {OWNERSHIP.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Installed
+                <select className="select" value={g.installStatus} onChange={(e) => set({ installStatus: e.target.value as Game["installStatus"] })}>
+                  {INSTALL.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Players {g.metaSource.multiplayer && <SourceBadge source={g.metaSource.multiplayer} />}
+                <select className="select" value={g.multiplayer} onChange={(e) => set({ multiplayer: e.target.value as Game["multiplayer"] })}>
+                  {MULTIPLAYER.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Endless / sandbox {g.metaSource.endless && <SourceBadge source={g.metaSource.endless} />}
+                <select
+                  className="select"
+                  value={g.endless == null ? "" : g.endless ? "1" : "0"}
+                  onChange={(e) => set({ endless: e.target.value === "" ? null : e.target.value === "1" })}
+                >
+                  <option value="">Unknown</option>
+                  <option value="1">Yes, no real ending</option>
+                  <option value="0">No, it ends</option>
+                </select>
+              </label>
+              <label className="lbl">
+                Platform
+                <CommitInput value={g.platform} onCommit={(v) => set({ platform: v.trim() || "PC" })} />
+              </label>
+              <label className="lbl">
+                Store
+                <CommitInput value={g.storefront ?? ""} placeholder="unknown" onCommit={(v) => set({ storefront: v.trim() || null })} />
+              </label>
+              <label className="lbl" style={{ gridColumn: "1 / -1" }}>
+                Suggestions (used by Pick for me in Phase 2)
+                <select className="select" value={g.recPref} onChange={(e) => set({ recPref: e.target.value as Game["recPref"] })}>
+                  {REC_PREFS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details className="sec" open>
+          <summary>
+            Length
+            <span className="right dim mono" style={{ fontSize: "0.7rem" }}>your value wins</span>
+          </summary>
+          <div className="body">
+            {LENGTH_KINDS.map((k) => {
+              const eff = effectiveLength(g, k.id, settings.useUnverifiedLengths);
+              const mine = g.lengths.find((l) => l.kind === k.id && l.source === "user");
+              const other = g.lengths.filter((l) => l.kind === k.id && l.source !== "user");
+              return (
+                <div className="lenrow" key={k.id}>
+                  <span className="dim">{k.label}</span>
+                  <span className="num" title={eff ? SOURCE_LABEL[eff.source] ?? eff.source : "No data"}>
+                    {eff ? (
+                      <>
+                        {fmtHours(eff.hours)} <SourceBadge source={eff.source} />
+                        {mine && other.length > 0 && <span className="dim" style={{ fontSize: "0.75rem" }}> (est. {fmtHours(other[0].hours)})</span>}
+                      </>
+                    ) : (
+                      <span className="dim">unknown</span>
+                    )}
+                  </span>
+                  <CommitInput
+                    value={mine ? String(mine.hours) : ""}
+                    placeholder="yours"
+                    ariaLabel={`Your ${k.label} hours`}
+                    onCommit={(v) => {
+                      const t = v.trim();
+                      const n = t === "" ? null : Number(t);
+                      if (n != null && !(n >= 0 && n < 10000)) return;
+                      void setLength(g.id, k.id, n);
+                    }}
+                  />
+                </div>
+              );
+            })}
+            {g.lengths.some((l) => l.source === "legacy_table" || l.source === "ai_estimate") && (
+              <div className="dim" style={{ fontSize: "0.8rem" }}>
+                <span className="badge est">est.</span> = carried over from the old REWIND table; never verified. Type your own hours to override.
+              </div>
+            )}
+            <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => void openExternal(`https://howlongtobeat.com/?q=${encodeURIComponent(cleanTitle(g.title))}`)}>
+              Look up on HowLongToBeat ↗
+            </button>
+          </div>
+        </details>
+
+        <details className="sec" open>
+          <summary>Notes</summary>
+          <div className="body">
+            <NotesEditor game={g} onSave={(notes) => set({ notes })} />
+          </div>
+        </details>
+
+        <details className="sec" open>
+          <summary>Tags</summary>
+          <div className="body">
+            <div className="chips">
+              {g.tags.length === 0 && <span className="dim" style={{ fontSize: "0.85rem" }}>No tags yet.</span>}
+              {g.tags.map((t) => (
+                <span key={t.tag} className={"chip" + (t.source === "user" ? " user" : "")} title={t.source === "user" ? "Your tag" : SOURCE_LABEL[t.source === "legacy" ? "legacy_table" : t.source] ?? t.source}>
+                  {t.tag}
+                  <button aria-label={`Remove tag ${t.tag}`} onClick={() => void setTags(g.id, g.tags.filter((x) => x.tag !== t.tag).map((x) => x.tag))}>
+                    <Icon name="x" className="ico" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <form
+              className="row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newTag.trim()) return;
+                void setTags(g.id, [...g.tags.map((t) => t.tag), ...newTag.split(",")]);
+                setNewTag("");
+              }}
+            >
+              <input className="field grow" placeholder="add tags, comma separated" value={newTag} onChange={(e) => setNewTag(e.target.value)} />
+              <button className="btn sm" type="submit">Add</button>
+            </form>
+          </div>
+        </details>
+
+        <details className="sec" open={collections.length > 0 && collections.length < 8}>
+          <summary>
+            Collections <span className="right dim num">{inCols.size}</span>
+          </summary>
+          <div className="body">
+            {collections.length === 0 && <span className="dim" style={{ fontSize: "0.85rem" }}>No collections yet. Create one in Collections.</span>}
+            {collections.map((c) => (
+              <label key={c.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={inCols.has(c.id)}
+                  onChange={async (e) => {
+                    const add = e.target.checked;
+                    await run(async () => {
+                      if (add) await repo.addToCollection(c.id, [g.id]);
+                      else await repo.removeFromCollection(c.id, [g.id]);
+                    });
+                    await reloadCollections();
+                  }}
+                />
+                {c.name}
+              </label>
+            ))}
+          </div>
+        </details>
+
+        <details className="sec">
+          <summary>Playtime & dates</summary>
+          <div className="body">
+            <dl className="kv">
+              <dt>Imported playtime</dt>
+              <dd className="num">
+                {fmtPlaytime(g.importedPlaytimeMin)}{" "}
+                {g.playtimeSource && <span className="dim" style={{ fontSize: "0.78rem" }}>({SOURCE_LABEL[g.playtimeSource] ?? g.playtimeSource})</span>}
+              </dd>
+              <dt>Completed</dt>
+              <dd>
+                <CommitInput type="date" value={g.dateCompleted ?? ""} onCommit={(v) => set({ dateCompleted: v || null })} />
+              </dd>
+              <dt>Dropped</dt>
+              <dd>
+                <CommitInput type="date" value={g.dateDropped ?? ""} onCommit={(v) => set({ dateDropped: v || null })} />
+              </dd>
+              <dt>Added</dt>
+              <dd className="num">{fmtDate(g.createdAt)}</dd>
+            </dl>
+            <div className="dim" style={{ fontSize: "0.8rem" }}>
+              Imported playtime is shown as-is and is never treated as proof you enjoyed a game. Session tracking arrives in Phase 2.
+            </div>
+          </div>
+        </details>
+
+        <details className="sec">
+          <summary>Game info</summary>
+          <div className="body">
+            <div className="form2">
+              <label className="lbl">
+                Release year
+                <CommitInput value={g.releaseYear ? String(g.releaseYear) : ""} placeholder="unknown" onCommit={(v) => set({ releaseYear: /^\d{4}$/.test(v.trim()) ? Number(v.trim()) : null })} />
+              </label>
+              <label className="lbl">
+                Steam App ID
+                <CommitInput value={g.steamAppId ? String(g.steamAppId) : ""} placeholder="none" onCommit={(v) => set({ steamAppId: /^\d+$/.test(v.trim()) ? Number(v.trim()) : null })} />
+              </label>
+              <label className="lbl">
+                Developer
+                <CommitInput value={g.developer ?? ""} placeholder="unknown" onCommit={(v) => set({ developer: v.trim() || null })} />
+              </label>
+              <label className="lbl">
+                Publisher
+                <CommitInput value={g.publisher ?? ""} placeholder="unknown" onCommit={(v) => set({ publisher: v.trim() || null })} />
+              </label>
+            </div>
+            {g.steamAppId && (
+              <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => void openExternal(`https://store.steampowered.com/app/${g.steamAppId}/`)}>
+                Steam store page ↗
+              </button>
+            )}
+            <div className="dim" style={{ fontSize: "0.8rem" }}>Cover art, descriptions and Steam matching arrive in Phase 3. Until then nothing here is filled in automatically.</div>
+          </div>
+        </details>
+
+        <details className="sec">
+          <summary>
+            History <span className="right dim num">{events.length}</span>
+          </summary>
+          <div className="body">
+            {events.length === 0 ? (
+              <span className="dim" style={{ fontSize: "0.85rem" }}>No recorded changes yet.</span>
+            ) : (
+              <div className="eventlog inset">
+                {events.map((e) => (
+                  <div className="ev" key={e.id}>
+                    <time>{fmtDateTime(e.ts)}</time>
+                    <span>{describeEvent(e)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      </div>
+    </aside>
+  );
+}
+
+function TitleEditor({ game, onSave }: { game: Game; onSave(t: string): void }) {
+  const [v, setV] = useState(cleanTitle(game.title));
+  useEffect(() => setV(cleanTitle(game.title)), [game.title]);
+  return (
+    <textarea
+      className="dtitle"
+      rows={2}
+      value={v}
+      aria-label="Title"
+      title="Click to rename"
+      onChange={(e) => setV(e.target.value.replace(/\n/g, " "))}
+      onBlur={() => {
+        const t = v.trim();
+        if (t && t !== cleanTitle(game.title)) onSave(t);
+        else setV(cleanTitle(game.title));
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLTextAreaElement).blur();
+        }
+      }}
+    />
+  );
+}
+
+function NotesEditor({ game, onSave }: { game: Game; onSave(n: string): void }) {
+  const [v, setV] = useState(game.notes);
+  const [dirty, setDirty] = useState(false);
+  const latest = useRef({ v, dirty, onSave });
+  latest.current = { v, dirty, onSave };
+  // Switching to another game or closing the panel never loses a half-typed note.
+  useEffect(() => () => {
+    if (latest.current.dirty) latest.current.onSave(latest.current.v);
+  }, []);
+  useEffect(() => {
+    setV(game.notes);
+    setDirty(false);
+  }, [game.notes]);
+  useEffect(() => {
+    if (!dirty) return;
+    const t = window.setTimeout(() => {
+      onSave(v);
+      setDirty(false);
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [v, dirty, onSave]);
+  return (
+    <>
+      <textarea
+        className="field"
+        value={v}
+        placeholder="Where you left off, mods you used, what to remember next time…"
+        onChange={(e) => {
+          setV(e.target.value);
+          setDirty(true);
+        }}
+        onBlur={() => {
+          if (dirty) {
+            onSave(v);
+            setDirty(false);
+          }
+        }}
+      />
+      <span className="dim mono" style={{ fontSize: "0.7rem" }}>{dirty ? "saving…" : "saved"}</span>
+    </>
+  );
+}
+
+export function describeEvent(e: EventRow, title?: string): string {
+  const t = title ? `${title}: ` : "";
+  const label = (s: unknown) => STATUSES.find((x) => x.id === s)?.label ?? String(s);
+  switch (e.type) {
+    case "status":
+      return `${t}${label(e.data.from)} → ${label(e.data.to)}`;
+    case "rating":
+      return `${t}rating ${e.data.to ? "★".repeat(Number(e.data.to)) : "cleared"}`;
+    case "game_added":
+      return `${t || String(e.data.title) + ": "}added to library`;
+    case "import":
+      return `Imported from ${String(e.data.from)}: ${e.data.added} added, ${e.data.merged} merged, ${e.data.skipped} skipped`;
+    case "restore":
+      return `Backup restored (${String(e.data.mode)})`;
+    case "legacy_log":
+      return `[old REWIND] ${String(e.data.text).replace(/[™®]/g, "")}`;
+    default:
+      return `${t}${e.type}`;
+  }
+}
