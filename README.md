@@ -85,20 +85,25 @@ If either doesn't match, don't run it. Never bypass SmartScreen for files from a
 
 ## Getting the installer (GitHub Actions)
 
-The installer is compiled on a free GitHub-hosted Windows machine:
+The installer is compiled on a free GitHub-hosted Windows machine. Nothing needs installing on your PC.
 
-1. Create a repository on GitHub (private is fine) and push this folder to it.
-2. Open the repo's **Actions** tab → **Windows build**. It runs on every push (or press *Run workflow*).
-3. When it finishes (about 10–20 minutes the first time, faster after), open the run and download the
-   **REWIND-2.0.0-windows-x64** artifact (a zip containing the files above).
-4. Optional: push a tag like `v2.0.0` and the workflow also publishes a **Release** with the files
-   attached, which is easier to download.
+1. The project lives in a private GitHub repository.
+2. Every push to `main` starts **Actions → Windows build** (or press *Run workflow*). The first run takes
+   roughly 15–25 minutes; later runs are faster because the Rust build is cached.
+3. When the run shows a green check, open it and download **REWIND-2.0.0-windows-x64** (a zip with the
+   setup `.exe`, the `.msi`, a portable `.exe` and `SHA256SUMS.txt`).
+4. Optional: push a tag like `v2.0.0` and the workflow also publishes a **Release** with the files attached.
 
-The first run also uploads a **lockfiles** artifact (`package-lock.json`, `src-tauri/Cargo.lock`).
-Commit those two files so later builds use exactly the same dependency versions.
+What the workflow does on its own:
+- **Lockfiles**: the first successful install commits `package-lock.json` and `src-tauri/Cargo.lock` back
+  to `main`, so later builds use exactly the same dependency versions.
+- **Logs**: full plain-text logs of every stage are saved to a `ci-logs` branch, so a failed build can be
+  diagnosed without digging through the Actions page. The branch never triggers builds and is safe to delete.
+- Each stage (tests, frontend, Rust + NSIS, MSI, type check) reports separately, and whatever installers
+  were built are uploaded even if a later stage fails.
 
-Cost: free for public repos; private repos on GitHub Free get 2,000 Actions minutes a month and
-Windows minutes count double, so one build uses roughly 20–40 of them.
+Cost: private repos on GitHub Free get 2,000 Actions minutes a month; Windows minutes count double, so
+one build uses roughly 30–50 of them.
 
 ## Building on your own PC (optional)
 
