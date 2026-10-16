@@ -1,4 +1,6 @@
 mod db;
+mod net;
+mod steam_local;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -84,6 +86,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let conn = db::open(&dir.join(DB_FILE))?;
             app.manage(db::Db(std::sync::Mutex::new(conn)));
+            app.manage(net::Http(net::client()?));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -93,7 +96,14 @@ pub fn run() {
             read_text_file,
             write_text_file,
             write_safety_backup,
-            app_info
+            app_info,
+            net::http_request,
+            net::download_art,
+            net::import_art,
+            net::art_stats,
+            net::delete_art,
+            net::art_missing,
+            steam_local::steam_local_scan
         ])
         .run(tauri::generate_context!())
         .expect("error while running REWIND");

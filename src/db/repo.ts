@@ -2,6 +2,7 @@ import type { SqlDriver, SqlValue, Statement } from "./driver.ts";
 import { BACKUP_TABLES, migrate, type BackupTable } from "./schema.ts";
 import { canon } from "../lib/canon.ts";
 import type { RecEvent } from "../rec/taste.ts";
+import type { MetaRecord, Provider } from "../meta/types.ts";
 import type {
   Collection,
   EventRow,
@@ -29,7 +30,48 @@ function json<T>(v: unknown, fallback: T): T {
   }
 }
 
-export function rowToGame(r: Row, tags: GameTag[] = [], lengths: GameLength[] = []): Game {
+export function rowToMeta(r: Row): MetaRecord {
+  return {
+    gameId: String(r.game_id),
+    provider: r.provider as Provider,
+    providerId: str(r.provider_id),
+    status: r.status as MetaRecord["status"],
+    method: str(r.method),
+    confidence: num(r.confidence),
+    data: json<MetaRecord["data"]>(r.data, null),
+    candidates: json<MetaRecord["candidates"]>(r.candidates, []),
+    rejected: json<string[]>(r.rejected, []),
+    error: str(r.error),
+    fetchedAt: str(r.fetched_at),
+    updatedAt: String(r.updated_at),
+  };
+}
+
+export function metaStatement(m: MetaRecord): Statement {
+  return {
+    sql: `INSERT INTO game_meta (game_id, provider, provider_id, status, method, confidence, data, candidates, rejected, error, fetched_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(game_id, provider) DO UPDATE SET provider_id = excluded.provider_id, status = excluded.status, method = excluded.method,
+            confidence = excluded.confidence, data = excluded.data, candidates = excluded.candidates, rejected = excluded.rejected,
+            error = excluded.error, fetched_at = excluded.fetched_at, updated_at = excluded.updated_at`,
+    params: [
+      m.gameId,
+      m.provider,
+      m.providerId,
+      m.status,
+      m.method,
+      m.confidence,
+      m.data ? JSON.stringify(m.data) : null,
+      JSON.stringify(m.candidates ?? []),
+      JSON.stringify(m.rejected ?? []),
+      m.error,
+      m.fetchedAt,
+      m.updatedAt,
+    ],
+  };
+}
+
+export function rowToGame(r: Row, tags: GameTag[] = [], lengths: GameLength[] = [], meta: Game["meta"] = {}): Game {
   return {
     id: String(r.id),
     title: String(r.title),
@@ -51,6 +93,9 @@ export function rowToGame(r: Row, tags: GameTag[] = [], lengths: GameLength[] = 
     notes: String(r.notes ?? ""),
     importedPlaytimeMin: num(r.imported_playtime_min),
     playtimeSource: str(r.playtime_source),
+    steamPlaytimeMin: num(r.steam_playtime_min),
+    steamLastPlayed: str(r.steam_last_played),
+    steamSyncedAt: str(r.steam_synced_at),
     lastPlayed: str(r.last_played),
     dateCompleted: str(r.date_completed),
     dateDropped: str(r.date_dropped),
@@ -65,6 +110,7 @@ export function rowToGame(r: Row, tags: GameTag[] = [], lengths: GameLength[] = 
     updatedAt: String(r.updated_at),
     tags,
     lengths,
+    meta,
   };
 }
 
@@ -159,11 +205,19 @@ export class Repo {
   // ---------- games ----------
 
   async loadGames(): Promise<Game[]> {
-    const [rows, tags, lengths] = await Promise.all([
+    const [rows, tags, lengths, metas] = await Promise.all([
       this.db.select<Row>(`SELECT * FROM games`),
       this.db.select<Row>(`SELECT game_id, tag, source FROM game_tags ORDER BY tag`),
       this.db.select<Row>(`SELECT game_id, kind, hours, source, updated_at FROM game_lengths`),
+      this.db.select<Row>(`SELECT * FROM game_meta`),
     ]);
+    const metaMap = new Map<string, Game["meta"]>();
+    for (const m of metas) {
+      const rec = rowToMeta(m);
+      const cur = metaMap.get(rec.gameId) ?? {};
+      cur[rec.provider] = rec;
+      metaMap.set(rec.gameId, cur);
+    }
     const tagMap = new Map<string, GameTag[]>();
     for (const t of tags) {
       const id = String(t.game_id);
@@ -182,7 +236,7 @@ export class Repo {
         updatedAt: String(l.updated_at),
       });
     }
-    return rows.map((r) => rowToGame(r, tagMap.get(String(r.id)) ?? [], lenMap.get(String(r.id)) ?? []));
+    return rows.map((r) => rowToGame(r, tagMap.get(String(r.id)) ?? [], lenMap.get(String(r.id)) ?? [], metaMap.get(String(r.id)) ?? {}));
   }
 
   async loadGame(id: string): Promise<Game | null> {
@@ -193,6 +247,12 @@ export class Repo {
       `SELECT game_id, kind, hours, source, updated_at FROM game_lengths WHERE game_id = ?`,
       [id],
     );
+    const metas = await this.db.select<Row>(`SELECT * FROM game_meta WHERE game_id = ?`, [id]);
+    const meta: Game["meta"] = {};
+    for (const m of metas) {
+      const rec = rowToMeta(m);
+      meta[rec.provider] = rec;
+    }
     return rowToGame(
       rows[0],
       tags.map((t) => ({ tag: String(t.tag), source: String(t.source) })),
@@ -203,6 +263,7 @@ export class Repo {
         source: String(l.source),
         updatedAt: String(l.updated_at),
       })),
+      meta,
     );
   }
 
@@ -261,7 +322,7 @@ export class Repo {
     if (!sets.length) return [];
     // Hand-edited metadata becomes the user's value.
     const ms = { ...before.metaSource };
-    for (const f of ["multiplayer", "endless", "scale", "releaseYear", "developer", "publisher", "description"]) {
+    for (const f of ["multiplayer", "endless", "scale", "releaseYear", "developer", "publisher", "description", "coverPath"]) {
       if ((p as Record<string, unknown>)[f] !== undefined) ms[f] = "user";
     }
     sets.push(`meta_source = ?`, `updated_at = ?`);
@@ -327,24 +388,52 @@ export class Repo {
     const have = await this.db.select<{ tag: string }>(`SELECT tag FROM game_tags WHERE game_id = ?`, [gameId]);
     const haveSet = new Set(have.map((h) => h.tag));
     const stmts: Statement[] = [];
-    for (const t of haveSet) if (!want.has(t)) stmts.push({ sql: `DELETE FROM game_tags WHERE game_id = ? AND tag = ?`, params: [gameId, t] });
-    for (const t of want) if (!haveSet.has(t)) stmts.push({ sql: `INSERT INTO game_tags (game_id, tag, source) VALUES (?, ?, 'user')`, params: [gameId, t] });
+    const removed: string[] = [];
+    for (const t of haveSet)
+      if (!want.has(t)) {
+        stmts.push({ sql: `DELETE FROM game_tags WHERE game_id = ? AND tag = ?`, params: [gameId, t] });
+        removed.push(t);
+      }
+    const added: string[] = [];
+    for (const t of want)
+      if (!haveSet.has(t)) {
+        stmts.push({ sql: `INSERT INTO game_tags (game_id, tag, source) VALUES (?, ?, 'user')`, params: [gameId, t] });
+        added.push(t);
+      }
     if (stmts.length) {
-      stmts.push({ sql: `UPDATE games SET updated_at = ? WHERE id = ?`, params: [nowIso(), gameId] });
+      stmts.push(await this.hiddenTagsStatement(gameId, removed, added));
       await this.db.batch(stmts);
     }
+  }
+
+  /**
+   * Tags you remove are remembered, so a later metadata sync doesn't quietly put them back.
+   * Adding a tag yourself takes it off that list again.
+   */
+  private async hiddenTagsStatement(gameId: string, removed: string[], added: string[]): Promise<Statement> {
+    const r = await this.db.select<Row>(`SELECT meta_source FROM games WHERE id = ?`, [gameId]);
+    const ms = json<Record<string, string>>(r[0]?.meta_source, {});
+    const hidden = new Set((ms.hiddenTags ?? "").split(",").filter(Boolean));
+    for (const t of removed) hidden.add(t);
+    for (const t of added) hidden.delete(t);
+    if (hidden.size) ms.hiddenTags = [...hidden].join(",");
+    else delete ms.hiddenTags;
+    return { sql: `UPDATE games SET meta_source = ?, updated_at = ? WHERE id = ?`, params: [JSON.stringify(ms), nowIso(), gameId] };
   }
 
   async bulkTag(ids: string[], tag: string, add: boolean): Promise<void> {
     const t = normalizeTag(tag);
     if (!t || !ids.length) return;
-    await this.db.batch(
-      ids.map((id) =>
+    const stmts: Statement[] = [];
+    for (const id of ids) {
+      stmts.push(
         add
           ? { sql: `INSERT OR IGNORE INTO game_tags (game_id, tag, source) VALUES (?, ?, 'user')`, params: [id, t] }
           : { sql: `DELETE FROM game_tags WHERE game_id = ? AND tag = ?`, params: [id, t] },
-      ),
-    );
+      );
+      stmts.push(await this.hiddenTagsStatement(id, add ? [] : [t], add ? [t] : []));
+    }
+    await this.db.batch(stmts);
   }
 
   // ---------- collections ----------
@@ -481,6 +570,58 @@ export class Repo {
       `INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
       [key, JSON.stringify(value)],
     );
+  }
+
+  // ---------- secrets (API keys; never in backups) ----------
+
+  async getSecret(key: string): Promise<string | null> {
+    const r = await this.db.select<{ value: string }>(`SELECT value FROM secrets WHERE key = ?`, [key]);
+    return r.length ? String(r[0].value) : null;
+  }
+
+  async setSecret(key: string, value: string | null): Promise<void> {
+    if (value == null || value === "") await this.db.execute(`DELETE FROM secrets WHERE key = ?`, [key]);
+    else await this.db.execute(`INSERT INTO secrets (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [key, value]);
+  }
+
+  // ---------- re-downloadable lookups ----------
+
+  async getCache<T>(key: string, maxAgeDays: number): Promise<T | null> {
+    const r = await this.db.select<Row>(`SELECT value, fetched_at FROM http_cache WHERE key = ?`, [key]);
+    if (!r.length) return null;
+    const age = (Date.now() - Date.parse(String(r[0].fetched_at))) / 86_400_000;
+    if (!(age <= maxAgeDays)) return null;
+    return json<T | null>(r[0].value, null);
+  }
+
+  async setCache(key: string, value: unknown): Promise<void> {
+    await this.db.execute(
+      `INSERT INTO http_cache (key, value, fetched_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at`,
+      [key, JSON.stringify(value), nowIso()],
+    );
+  }
+
+  // ---------- outside metadata ----------
+
+  async loadMeta(provider?: Provider): Promise<MetaRecord[]> {
+    const rows = provider
+      ? await this.db.select<Row>(`SELECT * FROM game_meta WHERE provider = ?`, [provider])
+      : await this.db.select<Row>(`SELECT * FROM game_meta`);
+    return rows.map(rowToMeta);
+  }
+
+  async saveMeta(records: MetaRecord[], extra: Statement[] = []): Promise<void> {
+    if (!records.length && !extra.length) return;
+    await this.db.batch([...records.map(metaStatement), ...extra]);
+  }
+
+  /** Runs several statements as one all-or-nothing transaction. */
+  async batch(stmts: Statement[]): Promise<void> {
+    if (stmts.length) await this.db.batch(stmts);
+  }
+
+  async deleteMeta(gameId: string, provider: Provider): Promise<void> {
+    await this.db.execute(`DELETE FROM game_meta WHERE game_id = ? AND provider = ?`, [gameId, provider]);
   }
 
   // ---------- activity ----------

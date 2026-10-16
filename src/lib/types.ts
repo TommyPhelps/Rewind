@@ -71,7 +71,9 @@ export const SOURCE_LABEL: Record<string, string> = {
   legacy_table: "Old REWIND table (unverified estimate)",
   ai_estimate: "Old REWIND AI lookup (unverified)",
   rewind_artifact: "REWIND artifact import",
-  steam: "Steam",
+  steam: "Steam store (verified)",
+  steam_tags: "Steam user tags",
+  igdb: "IGDB time to beat (player-submitted)",
   import: "Backup import",
   reference: "REWIND reference (unverified estimate)",
   inferred: "Inferred from tags",
@@ -111,6 +113,10 @@ export interface Game {
   notes: string;
   importedPlaytimeMin: number | null;
   playtimeSource: string | null;
+  /** Minutes Steam reports (from a Steam library import). Kept apart from the old imported value. */
+  steamPlaytimeMin: number | null;
+  steamLastPlayed: string | null;
+  steamSyncedAt: string | null;
   lastPlayed: string | null;
   dateCompleted: string | null;
   dateDropped: string | null;
@@ -125,6 +131,8 @@ export interface Game {
   updatedAt: string;
   tags: GameTag[];
   lengths: GameLength[];
+  /** Outside metadata (Steam / IGDB), if any has been looked up. */
+  meta: Partial<Record<import("../meta/types.ts").Provider, import("../meta/types.ts").MetaRecord>>;
 }
 
 export interface Collection {
@@ -174,6 +182,10 @@ export interface AppSettings {
   uiScale: number; // 0.9 - 1.5
   sidebarCollapsed: boolean;
   libraryView: "table" | "grid";
+  /** Cover size in the grid. */
+  gridSize: "s" | "m" | "l";
+  /** Small cover thumbnails in table rows. */
+  listCovers: boolean;
   detailWidth: number;
   useUnverifiedLengths: boolean;
   lowStimulation: boolean;
@@ -185,6 +197,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiScale: 1,
   sidebarCollapsed: false,
   libraryView: "table",
+  gridSize: "m",
+  listCovers: true,
   detailWidth: 400,
   useUnverifiedLengths: true,
   lowStimulation: false,

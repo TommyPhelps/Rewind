@@ -127,6 +127,37 @@ export const MIGRATIONS: { version: number; name: string; sql: string[] }[] = [
       `CREATE INDEX rec_events_ts ON rec_events(ts)`,
     ],
   },
+  {
+    version: 3,
+    name: "metadata, Steam and artwork",
+    sql: [
+      // Steam's own numbers, kept apart from the playtime imported from the old app.
+      `ALTER TABLE games ADD COLUMN steam_playtime_min INTEGER`,
+      `ALTER TABLE games ADD COLUMN steam_last_played TEXT`,
+      `ALTER TABLE games ADD COLUMN steam_synced_at TEXT`,
+      // One row per game and provider. Never overwrites your fields; shown alongside them.
+      `CREATE TABLE game_meta (
+        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('steam','igdb')),
+        provider_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('linked','review','none','error')),
+        method TEXT,
+        confidence REAL,
+        data TEXT,
+        candidates TEXT NOT NULL DEFAULT '[]',
+        rejected TEXT NOT NULL DEFAULT '[]',
+        error TEXT,
+        fetched_at TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (game_id, provider)
+      )`,
+      `CREATE INDEX game_meta_status ON game_meta(provider, status)`,
+      // API keys and tokens: stored on this PC only, never written to backups.
+      `CREATE TABLE secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+      // Re-downloadable lookups (e.g. Steam's tag names). Not part of backups.
+      `CREATE TABLE http_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, fetched_at TEXT NOT NULL)`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -136,6 +167,7 @@ export const BACKUP_TABLES = [
   "games",
   "game_lengths",
   "game_tags",
+  "game_meta",
   "collections",
   "collection_games",
   "playthroughs",

@@ -1,6 +1,6 @@
 import { cleanTitle, searchKey } from "./canon.ts";
 import type { Game, LengthKind, Ownership, Status } from "./types.ts";
-import { progressState } from "../rec/progress.ts";
+import { lastPlayedAny, playtimeMin, progressState } from "../rec/progress.ts";
 
 const UNVERIFIED = new Set(["legacy_table", "ai_estimate"]);
 const PRIORITY = (source: string) => (source === "user" ? 0 : UNVERIFIED.has(source) ? (source === "legacy_table" ? 2 : 3) : 1);
@@ -59,6 +59,39 @@ export interface LibraryFilters {
   hideMultiplayer: boolean;
   progress: "any" | "not_started" | "started" | "finished";
   needsInfo: boolean;
+  /** Artwork / outside metadata state. */
+  meta: MetaFilter;
+}
+
+export type MetaFilter = "any" | "has_cover" | "no_cover" | "linked" | "review" | "not_found" | "not_linked";
+
+export const META_FILTERS: { id: MetaFilter; label: string }[] = [
+  { id: "any", label: "Any artwork / match" },
+  { id: "has_cover", label: "Has a cover" },
+  { id: "no_cover", label: "No cover yet" },
+  { id: "linked", label: "Linked to Steam" },
+  { id: "not_linked", label: "Not linked to Steam" },
+  { id: "review", label: "Match needs review" },
+  { id: "not_found", label: "Not found on Steam" },
+];
+
+export function metaFilterMatch(g: Game, f: MetaFilter): boolean {
+  switch (f) {
+    case "any":
+      return true;
+    case "has_cover":
+      return Boolean(g.coverPath);
+    case "no_cover":
+      return !g.coverPath;
+    case "linked":
+      return g.steamAppId != null;
+    case "not_linked":
+      return g.steamAppId == null;
+    case "review":
+      return g.meta.steam?.status === "review" || g.meta.igdb?.status === "review";
+    case "not_found":
+      return g.steamAppId == null && g.meta.steam?.status === "none";
+  }
 }
 
 export const PROGRESS_FILTERS: { id: LibraryFilters["progress"]; label: string }[] = [
@@ -79,6 +112,7 @@ export const DEFAULT_FILTERS: LibraryFilters = {
   hideMultiplayer: false,
   progress: "any",
   needsInfo: false,
+  meta: "any",
 };
 
 const OPEN: Status[] = ["backlog", "playing", "paused", "replay"];
@@ -104,21 +138,35 @@ export function filterGames(
       const bucket = st === "not_started" ? "not_started" : st === "finished" || st === "likely_finished" ? "finished" : st === "dropped" ? "dropped" : "started";
       if (bucket !== f.progress) return false;
     }
+    if (f.meta !== "any" && !metaFilterMatch(g, f.meta)) return false;
     if (terms.length) {
-      const hay = searchKey(g.title) + " " + g.tags.map((t) => t.tag).join(" ") + " " + searchKey(g.notes);
+      const people = [g.developer, g.publisher, ...companies(g)].filter(Boolean).join(" ");
+      const hay = searchKey(g.title) + " " + g.tags.map((t) => t.tag).join(" ") + " " + searchKey(g.notes) + " " + searchKey(people);
       if (!terms.every((t) => hay.includes(t))) return false;
     }
     return true;
   });
 }
 
-export type SortKey = "title" | "status" | "length" | "playtime" | "rating" | "updated" | "added" | "lastPlayed" | "fit";
+/** Developers and publishers from linked metadata (Steam first). */
+export function companies(g: Game): string[] {
+  const d = g.meta.steam?.data ?? g.meta.igdb?.data;
+  return d ? [...new Set([...d.developers, ...d.publishers])] : [];
+}
+
+/** Release year: your own value, else Steam's, else IGDB's. */
+export function releaseYear(g: Game): number | null {
+  return g.releaseYear ?? g.meta.steam?.data?.releaseYear ?? g.meta.igdb?.data?.releaseYear ?? null;
+}
+
+export type SortKey = "title" | "status" | "length" | "playtime" | "rating" | "updated" | "added" | "lastPlayed" | "fit" | "released";
 
 export const SORTS: { id: SortKey; label: string; dir: 1 | -1 }[] = [
   { id: "title", label: "Title", dir: 1 },
   { id: "fit", label: "Pick-for-me fit", dir: -1 },
   { id: "status", label: "Status", dir: 1 },
   { id: "lastPlayed", label: "Last played", dir: -1 },
+  { id: "released", label: "Release year", dir: -1 },
   { id: "playtime", label: "Time played", dir: -1 },
   { id: "length", label: "Length", dir: -1 },
   { id: "rating", label: "Your rating", dir: -1 },
@@ -150,7 +198,7 @@ export function sortGames(games: Game[], key: SortKey, dir: 1 | -1, allowUnverif
       case "length":
         return g.endless ? 9999 : displayLength(g, allowUnverified)?.hours ?? null;
       case "playtime":
-        return g.importedPlaytimeMin;
+        return playtimeMin(g);
       case "rating":
         return g.rating;
       case "updated":
@@ -158,9 +206,11 @@ export function sortGames(games: Game[], key: SortKey, dir: 1 | -1, allowUnverif
       case "added":
         return g.createdAt;
       case "lastPlayed":
-        return g.lastPlayed;
+        return lastPlayedAny(g);
       case "fit":
         return fit?.get(g.id) ?? null;
+      case "released":
+        return releaseYear(g);
     }
   };
   const decorated = games.map((g) => ({ g, v: val(g), t: sortTitle(g.title) }));

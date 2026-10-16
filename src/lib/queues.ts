@@ -6,7 +6,7 @@
 
 import type { Collection, Game, Status } from "./types.ts";
 import { cleanTitle } from "./canon.ts";
-import { progressRatio, progressState, type ProgressState } from "../rec/progress.ts";
+import { lastPlayedAny, progressRatio, progressState, type ProgressState } from "../rec/progress.ts";
 import { seriesNeighbours, seriesNext, type SeriesInfo } from "../rec/series.ts";
 
 export const UP_NEXT = "up next";
@@ -73,7 +73,7 @@ export function resumeCandidates(games: Game[], allowUnverified = true): Game[] 
       const pb = progressRatio(b, allowUnverified);
       return (
         Number(b.status === "paused") - Number(a.status === "paused") ||
-        (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? "") ||
+        (lastPlayedAny(b) ?? "").localeCompare(lastPlayedAny(a) ?? "") ||
         Number(pb.ratio != null) - Number(pa.ratio != null) ||
         (pb.ratio ?? 0) - (pa.ratio ?? 0) ||
         pb.hours - pa.hours

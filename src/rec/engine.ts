@@ -12,9 +12,9 @@ import { cleanTitle } from "../lib/canon.ts";
 import { displayLength, fmtHours } from "../lib/library.ts";
 import { SOURCE_LABEL, type Game, type GamingProfile, type Scale } from "../lib/types.ts";
 import { pole, TRAIT_LABEL, NOT_A_GAME, type Trait } from "./traits.ts";
-import { REASONS, similarity, type RecEvent, type TasteModel } from "./taste.ts";
+import { developersOf, REASONS, similarity, tagWeight, type RecEvent, type TasteModel } from "./taste.ts";
 import { seriesNeighbours, type SeriesInfo } from "./series.ts";
-import { progressRatio, progressState } from "./progress.ts";
+import { progressRatio, progressState, recentlyPlayed } from "./progress.ts";
 
 // ---------- session ----------
 
@@ -320,9 +320,10 @@ export function recommend(input: RecInput): RecResult {
     if (g.status === "completed" && !replayMood) { ex("Finished (choose 'Replay something familiar' to include)"); continue; }
     if (S.hideRejected && recentlyPassed.has(g.id)) { ex("Passed on this week"); continue; }
     const pr = progressRatio(g, allowUnverified);
-    const started = pr.hours >= 1 && (pr.ratio == null || pr.ratio < 1);
+    const recent = recentlyPlayed(g, now.getTime());
+    const started = pr.hours >= 1 && (pr.ratio == null || pr.ratio < 1 || recent);
     const inProgress = g.status === "playing" || g.status === "paused";
-    const state = progressState(g, allowUnverified);
+    const state = progressState(g, allowUnverified, now.getTime());
     if (S.intent === "continue" && g.status !== "playing") { ex("Not marked Playing"); continue; }
     if (S.intent === "resume" && !(g.status === "paused" || (state === "started" && g.status === "backlog"))) {
       ex(g.status === "playing" ? "Currently playing (choose 'Continue')" : "Not paused or part-played");
@@ -477,10 +478,10 @@ export function recommend(input: RecInput): RecResult {
       const f: { text: string; c: number }[] = [];
       let tagS = 0;
       let tagW = 0;
-      for (const { tag } of g.tags) {
+      for (const { tag, source } of g.tags) {
         const a = taste.tagAff.get(tag);
         if (!a) continue;
-        const w = taste.idf.get(tag) ?? 1;
+        const w = (taste.idf.get(tag) ?? 1) * tagWeight(source);
         tagS += a.aff * w;
         tagW += w;
       }
@@ -526,8 +527,25 @@ export function recommend(input: RecInput): RecResult {
       // A resemblance to a game you struggled with matters less when it resembles games you love even more.
       if (posSim > -negSim) negSim *= 0.35;
       const simScore = clamp(posSim * 1.3 + negSim * 1.1);
-      const parts = [tagW ? [tagScore, 0.35] : null, trW ? [traitScore, 0.35] : null, posSim || negSim ? [simScore, 0.3] : null].filter(Boolean) as [number, number][];
+      // Same developer as games you rated or listed (from store data or your own entry).
+      let devScore = 0;
+      let devNote: { text: string; c: number } | null = null;
+      for (const d of developersOf(g)) {
+        const a = taste.devAff.get(d);
+        if (!a) continue;
+        const others = a.titles.filter((t) => t !== g.title);
+        if (!others.length) continue;
+        if (a.value > devScore && a.value >= 0.3) {
+          devScore = Math.min(0.6, a.value);
+          devNote = { text: `Made by ${d}, who also made ${others.slice(0, 2).map(cleanTitle).join(" and ")}, which you enjoyed`, c: devScore * 0.5 };
+        } else if (a.value <= -0.3 && devScore === 0) {
+          devScore = Math.max(-0.4, a.value * 0.6);
+          devNote = { text: `Made by ${d}, like ${cleanTitle(others[0])}, which didn't work for you`, c: devScore * 0.5 };
+        }
+      }
+      const parts = [tagW ? [tagScore, 0.35] : null, trW ? [traitScore, 0.35] : null, posSim || negSim ? [simScore, 0.3] : null, devScore ? [devScore, 0.15] : null].filter(Boolean) as [number, number][];
       const s = parts.length ? parts.reduce((a, [x, w]) => a + x * w, 0) / parts.reduce((a, [, w]) => a + w, 0) : 0;
+      if (devNote) f.push(devNote);
       if (posNames.length) f.push({ text: `Similar to ${posNames.slice(0, 2).map((x) => x.n).join(" and ")}, which you enjoyed`, c: posSim });
       if (negNames.length && negSim <= -0.15) f.push({ text: `Shares a lot with ${negNames[0].n}, which you struggled to stay interested in`, c: negSim });
       const liked = g.tags.map((t) => ({ t: t.tag, a: taste.tagAff.get(t.tag)?.aff ?? 0 })).filter((x) => x.a >= 0.2 && !["guided", "dialogue", "mastery"].includes(x.t)).sort((a, b) => b.a - a.a);
@@ -561,11 +579,17 @@ export function recommend(input: RecInput): RecResult {
         f.push({ text: "A favourite worth revisiting", c: 0.3 });
       }
       if (!inProgress && g.status !== "replay") {
-        if (pr.ratio != null && pr.ratio >= 0.7 && pr.ratio < 1 && started) {
-          // Close to the end of the estimate but not marked finished: estimates are rough, so this
+        if (pr.ratio != null && pr.ratio >= 0.7 && started && (pr.ratio < 1 || recent)) {
+          // Close to (or past) the estimate but not marked finished: estimates are rough, so this
           // is a game to wrap up, not a replay.
           s += 0.3;
-          f.push({ text: `Close to the end (${Math.round(pr.hours)}h of ~${pr.est}h main story) — a good one to wrap up`, c: 0.6 });
+          f.push({
+            text:
+              pr.ratio < 1
+                ? `Close to the end (${Math.round(pr.hours)}h of ~${pr.est}h main story) — a good one to wrap up`
+                : `Played recently, ${Math.round(pr.hours)}h in (past the ~${pr.est}h estimate) — looks like you're still on it`,
+            c: 0.6,
+          });
         } else if (pr.ratio != null && pr.ratio >= 1) {
           // Enjoying it before doesn't make it a fresh pick: it's a replay unless you asked for one.
           if (!replayMood) {
@@ -699,7 +723,9 @@ export function recommend(input: RecInput): RecResult {
     } else if (tr.scale) commitment = `${SCALE_TEXT[tr.scale]} (${srcLabel(tr.scaleSource)})`;
     const tagSrc = [...new Set(g.tags.map((t) => t.source))];
     const sources = [
-      `Tags: ${tagSrc.length ? tagSrc.map(srcLabel).join(" + ") : "none"}`,
+      `Tags: ${tagSrc.length ? tagSrc.map((t) => (t === "igdb" ? "IGDB genres" : srcLabel(t))).join(" + ") : "none"}`,
+      ...(g.meta?.steam?.status === "linked" && g.meta.steam.data ? ["Details: Steam store"] : []),
+      ...(g.meta?.igdb?.status === "linked" && g.meta.igdb.data ? ["Details: IGDB.com"] : []),
       `Players: ${g.multiplayer === "unknown" ? "unknown" : srcLabel(g.metaSource.multiplayer ?? "user")}`,
       `Enjoyment: ${ev ? (ev.playtimeOnly ? "only playtime, no real evidence" : ev.parts.map((p) => p.kind).filter((k, i, a) => a.indexOf(k) === i).join(", ")) : "no data"}`,
     ];

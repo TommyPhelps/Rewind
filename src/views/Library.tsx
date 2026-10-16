@@ -3,7 +3,7 @@ import { useApp } from "../state/store.tsx";
 import type { Nav } from "../App.tsx";
 import { Icon } from "../ui/Icon.tsx";
 import { ContextMenu, Modal, type MenuItem } from "../ui/Overlays.tsx";
-import { Cover, SourceBadge, Stars, StatusPill } from "../ui/bits.tsx";
+import { Cover, SourceBadge, Stars, StatusPill, Thumb } from "../ui/bits.tsx";
 import { useRemPx, useViewport, visibleRange } from "../ui/useVirtual.ts";
 import { cleanTitle, canon } from "../lib/canon.ts";
 import {
@@ -19,9 +19,9 @@ import {
   type SortKey,
 } from "../lib/library.ts";
 import { OWNERSHIP, STATUSES, type Game, type Ownership, type Status } from "../lib/types.ts";
-import { PROGRESS_FILTERS, SORTS } from "../lib/library.ts";
+import { companies, META_FILTERS, PROGRESS_FILTERS, releaseYear, SORTS } from "../lib/library.ts";
 import { findUpNext } from "../lib/queues.ts";
-import { progressRatio, progressText } from "../rec/progress.ts";
+import { lastPlayedAny, playtimeMin, progressRatio, progressText } from "../rec/progress.ts";
 import { useTaste } from "../state/recs.ts";
 import { DEFAULT_WEIGHTS, EMPTY_SESSION, recommend } from "../rec/engine.ts";
 
@@ -58,6 +58,7 @@ export function LibraryView({
   const [cursor, setCursor] = useState<number>(-1);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [bulkTag, setBulkTag] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +83,7 @@ export function LibraryView({
 
   const setF = (patch: Partial<LibraryFilters>) => setUi((u) => ({ ...u, filters: { ...u.filters, ...patch } }));
   const f = ui.filters;
+  const activeCount = [f.length !== "all", f.ownership !== "all", f.progress !== "any", f.meta !== "any", !!f.tag, !!f.collectionId, f.favorite, f.hideMultiplayer, f.needsInfo].filter(Boolean).length;
 
   const members = useMemo(() => {
     if (!f.collectionId) return undefined;
@@ -111,7 +113,8 @@ export function LibraryView({
     if (g.status === "completed") bits.push(g.dateCompleted ? `finished ${g.dateCompleted}` : "finished");
     else if (p.hours >= 1) bits.push(progressText(g, allowEst));
     else bits.push("not started");
-    if (g.lastPlayed) bits.push(`last played ${g.lastPlayed}`);
+    const lp = lastPlayedAny(g);
+    if (lp) bits.push(`last played ${lp}`);
     if (!g.tags.length) bits.push("no info yet");
     return bits.join(" · ");
   };
@@ -136,14 +139,17 @@ export function LibraryView({
   const grid = settings.libraryView === "grid";
   // Narrow windows (or a wide details panel) drop the rating and tag columns.
   const compact = vp.width < 50 * remPx;
-  const COLS = compact ? COLS_COMPACT : COLS_FULL;
   const twoLine = settings.density !== "compact";
   const rowH = Math.round((settings.density === "compact" ? 2.25 : settings.density === "spacious" ? 3.5 : 3.1) * remPx);
+  const thumbs = settings.listCovers && twoLine;
+  const thumbW = Math.round(((rowH - 0.5 * remPx) * 2) / 3);
+  const COLS = (compact ? COLS_COMPACT : COLS_FULL).replace(/^2\.1rem /, thumbs ? `2.1rem ${thumbW}px ` : "2.1rem ");
   const headH = Math.round(2.2 * remPx);
-  const tileW = Math.round(11.5 * remPx);
-  const gap = Math.round(0.85 * remPx);
+  const tileW = Math.round((settings.gridSize === "s" ? 8.5 : settings.gridSize === "l" ? 15 : 11.5) * remPx);
+  const gap = Math.round((settings.gridSize === "s" ? 0.65 : 1) * remPx);
   const perRow = Math.max(1, Math.floor((vp.width - 2 * gap + gap) / (tileW + gap)));
-  const tileH = Math.round(((vp.width - 2 * gap - (perRow - 1) * gap) / perRow) * 1.5 + 2.9 * remPx + gap);
+  const capH = (settings.gridSize === "s" ? 2.6 : 3.4) * remPx;
+  const tileH = Math.round(((vp.width - 2 * gap - (perRow - 1) * gap) / perRow) * 1.5 + capH + gap);
   const totalH = grid ? Math.ceil(rows.length / perRow) * tileH + gap : rows.length * rowH + headH;
 
   const selectRow = (e: { ctrlKey: boolean; shiftKey: boolean }, idx: number) => {
@@ -288,7 +294,7 @@ export function LibraryView({
             id="lib-search"
             className="field"
             type="search"
-            placeholder="Search titles, tags, notes  (Ctrl+F)"
+            placeholder="Search titles, tags, notes, developers  (Ctrl+F)"
             value={f.query}
             onChange={(e) => setF({ query: e.target.value })}
             onKeyDown={(e) => {
@@ -299,6 +305,10 @@ export function LibraryView({
             }}
           />
         </div>
+        <button className="btn sm filt-toggle" aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}>
+          Filters{activeCount ? ` (${activeCount})` : ""} {showFilters ? "▴" : "▾"}
+        </button>
+        <div className={"filt" + (showFilters ? " open" : "")}>
         <select className="select" value={f.length} onChange={(e) => setF({ length: e.target.value as LibraryFilters["length"] })} aria-label="Length">
           {LENGTH_FILTERS.map((l) => (
             <option key={l.id} value={l.id}>{l.label}</option>
@@ -313,6 +323,11 @@ export function LibraryView({
         <select className="select" value={f.progress} onChange={(e) => setF({ progress: e.target.value as LibraryFilters["progress"] })} aria-label="Progress">
           {PROGRESS_FILTERS.map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+        <select className="select" value={f.meta} onChange={(e) => setF({ meta: e.target.value as LibraryFilters["meta"] })} aria-label="Artwork and Steam match" style={{ maxWidth: "12rem" }}>
+          {META_FILTERS.map((m) => (
+            <option key={m.id} value={m.id}>{m.label}</option>
           ))}
         </select>
         <select className="select" value={f.tag} onChange={(e) => setF({ tag: e.target.value })} aria-label="Tag" style={{ maxWidth: "11rem" }}>
@@ -336,6 +351,7 @@ export function LibraryView({
         <button className="btn sm" aria-pressed={f.needsInfo} onClick={() => setF({ needsInfo: !f.needsInfo })} title="Games with no tags or no length yet">
           needs info
         </button>
+        </div>
         <span className="divider" />
         <label className="row" style={{ gap: 4 }}>
           <span className="mono dim" style={{ fontSize: "var(--fs-xs)" }}>Sort</span>
@@ -370,6 +386,19 @@ export function LibraryView({
             <Icon name="grid" />
           </button>
         </div>
+        {grid ? (
+          <div className="seg" role="group" aria-label="Cover size">
+            {(["s", "m", "l"] as const).map((z) => (
+              <button key={z} aria-pressed={settings.gridSize === z} onClick={() => setSettings({ gridSize: z })} title={z === "s" ? "Small covers" : z === "m" ? "Medium covers" : "Large covers"}>
+                {z.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button className="btn sm" aria-pressed={settings.listCovers} onClick={() => setSettings({ listCovers: !settings.listCovers })} title="Small covers in the list">
+            covers
+          </button>
+        )}
         <button className="btn primary" onClick={() => setAdding(true)}>
           <Icon name="plus" /> Add game
         </button>
@@ -458,24 +487,40 @@ export function LibraryView({
         ) : grid ? (
           <div style={{ height: totalH, position: "relative" }}>
             {Array.from({ length: end - start }, (_, i) => start + i).map((r) => (
-              <div key={r} className="cgrid" style={{ top: r * tileH + gap, gridTemplateColumns: `repeat(${perRow}, 1fr)` }}>
+              <div key={r} className={"cgrid sz-" + settings.gridSize} style={{ top: r * tileH + gap, gap, padding: `0 ${gap}px`, gridTemplateColumns: `repeat(${perRow}, 1fr)` }}>
                 {rows.slice(r * perRow, r * perRow + perRow).map((g, j) => {
                   const idx = r * perRow + j;
                   const len = displayLength(g, allowEst);
+                  const pt = playtimeMin(g);
+                  const by = companies(g)[0] ?? g.developer;
+                  const yr = releaseYear(g);
+                  const n = upNextPos.get(g.id);
                   return (
                     <div
                       key={g.id}
-                      className={"tile" + (selected.has(g.id) ? " sel" : "")}
+                      role="gridcell"
+                      aria-selected={selected.has(g.id)}
+                      className={"tile" + (selected.has(g.id) ? " sel" : "") + (cursor === idx ? " cur" : "")}
                       onClick={(e) => selectRow(e, idx)}
                       onContextMenu={(e) => openMenu(e, idx)}
                       title={cleanTitle(g.title)}
                     >
-                      <Cover game={g} />
-                      <div className="cap">{cleanTitle(g.title)}</div>
-                      <div className="meta">
-                        <StatusPill status={g.status} />
-                        <span className="num dim">{g.endless ? <Endless game={g} /> : len ? fmtHours(len.hours) : ""}</span>
+                      <div className="tile-art">
+                        <Cover game={g} />
+                        <div className="tile-over">
+                          <StatusPill status={g.status} />
+                          {n && <span className="chip upn">#{n}</span>}
+                          <span className="grow" />
+                          {pt ? <span className="pt mono">{fmtPlaytime(pt)}</span> : null}
+                        </div>
                       </div>
+                      <div className="cap">{cleanTitle(g.title)}</div>
+                      {settings.gridSize !== "s" && (
+                        <div className="meta">
+                          <span className="ellipsis dim">{[by, yr].filter(Boolean).join(" · ") || "\u00a0"}</span>
+                          <span className="num dim">{g.endless ? <Endless game={g} /> : len ? fmtHours(len.hours) : ""}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -486,10 +531,11 @@ export function LibraryView({
           <div style={{ height: totalH, position: "relative", minWidth: compact ? "30rem" : "52rem" }}>
             <div className="thead" style={{ gridTemplateColumns: COLS }} role="row">
               <button onClick={() => setF({ favorite: !f.favorite })} title="Favorites" aria-label="Favorites">★</button>
+              {thumbs && <span aria-hidden="true" />}
               <button onClick={() => sortBy("title")} aria-sort={ui.sort === "title" ? (ui.dir === 1 ? "ascending" : "descending") : undefined}>Title{sortMark("title")}</button>
               <button onClick={() => sortBy("status")} aria-sort={ui.sort === "status" ? "other" : undefined}>Status{sortMark("status")}</button>
               <button className="r" onClick={() => sortBy("length")} aria-sort={ui.sort === "length" ? "other" : undefined} title="Main + extras when known, otherwise main story">Length{sortMark("length")}</button>
-              <button className="r" onClick={() => sortBy("playtime")} aria-sort={ui.sort === "playtime" ? "other" : undefined} title="Imported playtime">Played{sortMark("playtime")}</button>
+              <button className="r" onClick={() => sortBy("playtime")} aria-sort={ui.sort === "playtime" ? "other" : undefined} title="Time played: Steam's figure or the old app's, whichever is higher">Played{sortMark("playtime")}</button>
               {!compact && <button onClick={() => sortBy("rating")} aria-sort={ui.sort === "rating" ? "other" : undefined}>Rating{sortMark("rating")}</button>}
               {!compact && <button onClick={() => sortBy("updated")} aria-sort={ui.sort === "updated" ? "other" : undefined} title="Sort by last change">Tags{ui.sort === "updated" ? sortMark("updated") : ""}</button>}
             </div>
@@ -517,6 +563,7 @@ export function LibraryView({
                       <Icon name="star" />
                     </button>
                   </div>
+                  {thumbs && <Thumb file={g.coverPath} />}
                   <div className="title" title={g.title}>
                     <span className="tt">{cleanTitle(g.title)}</span>
                     {twoLine && <span className="sub">{subline(g)}</span>}
@@ -530,7 +577,7 @@ export function LibraryView({
                       </>
                     ) : <span className="dim">—</span>}
                   </div>
-                  <div className="r num">{fmtPlaytime(g.importedPlaytimeMin)}</div>
+                  <div className="r num">{fmtPlaytime(playtimeMin(g))}</div>
                   {!compact && <div><Stars value={g.rating} /></div>}
                   {!compact && <div className="tags">{g.tags.slice(0, 4).map((t) => t.tag).join(" · ")}</div>}
                 </div>

@@ -8,12 +8,15 @@ export function Modal({
   footer,
   onClose,
   wide,
+  xl,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onClose(): void;
   wide?: boolean;
+  /** Nearly full-window, for previews with many rows. */
+  xl?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -34,7 +37,7 @@ export function Modal({
   }, [onClose]);
   return (
     <div className="shade" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={"dlg" + (wide ? " wide" : "")} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
+      <div className={"dlg" + (wide ? " wide" : "") + (xl ? " xl" : "")} role="dialog" aria-modal="true" aria-label={title} ref={ref}>
         <div className="hd">
           <span>{title}</span>
           <button className="btn ghost icon sm x" onClick={onClose} aria-label="Close">

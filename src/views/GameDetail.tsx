@@ -3,7 +3,7 @@ import { useApp } from "../state/store.tsx";
 import { Icon } from "../ui/Icon.tsx";
 import { CommitInput, Cover, fmtDate, fmtDateTime, SourceBadge, Stars } from "../ui/bits.tsx";
 import { cleanTitle } from "../lib/canon.ts";
-import { effectiveLength, fmtHours, fmtPlaytime } from "../lib/library.ts";
+import { effectiveLength, fmtHours } from "../lib/library.ts";
 import {
   INSTALL,
   LENGTH_KINDS,
@@ -21,6 +21,7 @@ import { DEFAULT_WEIGHTS, EMPTY_SESSION, BAND_LABEL, recommend } from "../rec/en
 import { TRAIT_LABEL, TRAITS } from "../rec/traits.ts";
 import { REASONS } from "../rec/taste.ts";
 import { SCALES } from "../lib/types.ts";
+import { AboutSection, Banner, PlaytimeRows, SourcesSection } from "./GameMeta.tsx";
 
 export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
   const { games, gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections, profile, recEvents, setLogFor } = useApp();
@@ -94,8 +95,9 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
         </div>
       </div>
       <div className="scroll">
+        <Banner game={g} />
         <div className="dhead">
-          <Cover game={g} />
+          <Cover game={g} eager />
           <div style={{ display: "grid", gap: "0.45rem", minWidth: 0 }}>
             <TitleEditor game={g} onSave={(title) => set({ title })} />
             <div className="row" style={{ gap: "0.6rem" }}>
@@ -154,6 +156,8 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
         </div>
 
         <WhySection gameId={id} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={settings.useUnverifiedLengths} />
+
+        <AboutSection game={g} />
 
         <details className="sec" open>
           <summary>Overview</summary>
@@ -365,11 +369,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
           <summary>Playtime & dates</summary>
           <div className="body">
             <dl className="kv">
-              <dt>Imported playtime</dt>
-              <dd className="num">
-                {fmtPlaytime(g.importedPlaytimeMin)}{" "}
-                {g.playtimeSource && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>({SOURCE_LABEL[g.playtimeSource] ?? g.playtimeSource})</span>}
-              </dd>
+              <PlaytimeRows game={g} />
               <dt>Completed</dt>
               <dd>
                 <CommitInput type="date" value={g.dateCompleted ?? ""} onCommit={(v) => set({ dateCompleted: v || null })} />
@@ -382,22 +382,22 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
               <dd className="num">{fmtDate(g.createdAt)}</dd>
             </dl>
             <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
-              Imported playtime is shown as-is and is never treated as proof you enjoyed a game. Session tracking arrives in Phase 2.
+              REWIND uses the larger of the two figures. Playtime is never treated as proof you enjoyed a game; log sessions yourself for a real history.
             </div>
           </div>
         </details>
 
+        <SourcesSection game={g} />
+
         <details className="sec">
-          <summary>Game info</summary>
+          <summary>
+            Your corrections <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>override store data</span>
+          </summary>
           <div className="body">
             <div className="form2">
               <label className="lbl">
                 Release year
                 <CommitInput value={g.releaseYear ? String(g.releaseYear) : ""} placeholder="unknown" onCommit={(v) => set({ releaseYear: /^\d{4}$/.test(v.trim()) ? Number(v.trim()) : null })} />
-              </label>
-              <label className="lbl">
-                Steam App ID
-                <CommitInput value={g.steamAppId ? String(g.steamAppId) : ""} placeholder="none" onCommit={(v) => set({ steamAppId: /^\d+$/.test(v.trim()) ? Number(v.trim()) : null })} />
               </label>
               <label className="lbl">
                 Developer
@@ -408,12 +408,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                 <CommitInput value={g.publisher ?? ""} placeholder="unknown" onCommit={(v) => set({ publisher: v.trim() || null })} />
               </label>
             </div>
-            {g.steamAppId && (
-              <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => void openExternal(`https://store.steampowered.com/app/${g.steamAppId}/`)}>
-                Steam store page ↗
-              </button>
-            )}
-            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>Cover art, descriptions and Steam matching arrive in Phase 3. Until then nothing here is filled in automatically.</div>
+            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>Leave these empty to show what Steam or IGDB says. Anything you type here wins and is never replaced by a sync.</div>
           </div>
         </details>
 
@@ -524,6 +519,16 @@ export function describeEvent(e: EventRow, title?: string): string {
       return `Imported from ${String(e.data.from)}: ${e.data.added} added, ${e.data.merged} merged, ${e.data.skipped} skipped`;
     case "restore":
       return `Backup restored (${String(e.data.mode)})`;
+    case "steam_import": {
+      const src = e.data.source === "steam_local" ? "Steam client on this PC" : "Steam account";
+      return `Steam import (${src}): ${Number(e.data.linked ?? 0)} matched, ${Number(e.data.added ?? 0)} added, Steam playtime updated for ${Number(e.data.playtimeUpdated ?? 0)}`;
+    }
+    case "metadata_sync": {
+      const c = e.data as Record<string, number | string>;
+      const bits = [c.linked && `${c.linked} linked`, c.fetched && `${c.fetched} updated`, c.covers && `${c.covers} covers`, c.review && `${c.review} to review`].filter(Boolean);
+      const how = c.outcome === "complete" ? "" : c.outcome === "offline" ? " (stopped: offline)" : c.outcome === "cancelled" ? " (stopped by you)" : ` (${String(c.outcome)})`;
+      return `Details & covers sync${how}${bits.length ? ": " + bits.join(", ") : ": nothing new"}`;
+    }
     case "session": {
       const m = e.data.minutes == null ? null : Number(e.data.minutes);
       return `${t}played${m ? ` for ${m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`}` : ""} (logged for ${String(e.data.date)})`;

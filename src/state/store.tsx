@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Repo, type GamePatch } from "../db/repo.ts";
-import { createDriver, ensureWindowOnScreen, getAppInfo, type AppInfo } from "../platform/native.ts";
+import { createDriver, ensureWindowOnScreen, getAppInfo, setArtBase, type AppInfo } from "../platform/native.ts";
 import { DEFAULT_SETTINGS, type AppSettings, type Collection, type Game, type GamingProfile, type LengthKind } from "../lib/types.ts";
 import { DEFAULT_PROFILE } from "../data/profileDefaults.ts";
 import { applyReferenceData } from "../migrate/reference.ts";
@@ -147,7 +147,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await reloadAll();
         const done = await repo.getSetting("first_run_done", false);
         setFirstRun(!done && (await repo.countGames()) === 0);
-        setInfo(await getAppInfo());
+        const appInfo = await getAppInfo();
+        setArtBase(appInfo.dataDir);
+        setInfo(appInfo);
         setReady(true);
         void ensureWindowOnScreen();
       } catch (e) {

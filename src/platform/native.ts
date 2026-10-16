@@ -4,11 +4,12 @@
 // Outside the desktop app (only during development, in a plain browser) the
 // database falls back to a local dev bridge; the shipped app never uses it.
 
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import type { SqlDriver, SqlValue, Statement } from "../db/driver.ts";
+import type { ArtFile, HttpRequest, HttpResponse, Transport } from "../meta/http.ts";
 
 export const inDesktopApp = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>);
@@ -128,4 +129,101 @@ function browserPick(): Promise<{ path: string; text: string } | null> {
     };
     input.click();
   });
+}
+
+// ---------- network (Steam / IGDB) and the artwork cache ----------
+
+/** In the app: Rust makes the request (HTTPS to Steam and IGDB hosts only). In a dev preview: the dev bridge. */
+export function createTransport(): Transport {
+  if (inDesktopApp()) {
+    return {
+      request: (req: HttpRequest) => invoke<HttpResponse>("http_request", { req }),
+      download: (url: string, name: string) => invoke<ArtFile>("download_art", { url, name }),
+    };
+  }
+  const call = async <T>(op: string, body: unknown): Promise<T> => {
+    let r: Response;
+    try {
+      r = await fetch(`/__rewind_dev/${op}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    } catch {
+      throw new Error("offline: dev bridge unreachable");
+    }
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error ?? "network: dev bridge error");
+    return j.result as T;
+  };
+  return {
+    request: (req) => call<HttpResponse>("http", { req }),
+    download: (url, name) => call<ArtFile>("art", { url, name }),
+  };
+}
+
+let artBase: string | null = null;
+let artSep = "/";
+
+/** Called once the app's data folder is known. */
+export function setArtBase(dataDir: string): void {
+  artBase = dataDir;
+  artSep = dataDir.includes("\\") ? "\\" : "/";
+}
+
+/** A displayable URL for a cached image ("artwork/…", relative to the app data folder). */
+export function artSrc(file: string | null | undefined): string | null {
+  if (!file || !/^artwork\/[A-Za-z0-9._-]+$/.test(file)) return null;
+  if (!inDesktopApp()) return `/${file}`;
+  if (!artBase) return null;
+  return convertFileSrc(artBase + artSep + file.replace("/", artSep));
+}
+
+export async function artMissing(files: string[]): Promise<string[]> {
+  if (!files.length) return [];
+  if (!inDesktopApp()) {
+    const r = await fetch("/__rewind_dev/art_missing", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ files }) });
+    return (await r.json()).result as string[];
+  }
+  return invoke<string[]>("art_missing", { files });
+}
+
+export async function artStats(): Promise<{ files: number; bytes: number; dir: string }> {
+  if (!inDesktopApp()) return { files: 0, bytes: 0, dir: "(browser preview)" };
+  return invoke("art_stats");
+}
+
+export async function deleteArt(files: string[]): Promise<number> {
+  if (!inDesktopApp() || !files.length) return 0;
+  return invoke<number>("delete_art", { files });
+}
+
+const IMAGE_FILTER = [{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "gif"] }];
+
+/** Lets you pick your own cover picture; it is copied into REWIND's artwork folder. */
+export async function pickCoverImage(name: string): Promise<ArtFile | null> {
+  if (!inDesktopApp()) return null;
+  const path = await openDialog({ title: "Choose a cover image", multiple: false, directory: false, filters: IMAGE_FILTER });
+  if (!path || Array.isArray(path)) return null;
+  return invoke<ArtFile>("import_art", { path, name });
+}
+
+export async function pickFolder(title: string): Promise<string | null> {
+  if (!inDesktopApp()) return null;
+  const path = await openDialog({ title, multiple: false, directory: true });
+  return !path || Array.isArray(path) ? null : path;
+}
+
+export interface SteamLocalScan {
+  root: string;
+  libraries: string[];
+  manifests: string[];
+  accounts: { id: string; localConfig: string; modified: number }[];
+}
+
+/** Reads the Steam client's files on this PC (no password, no key, no network). */
+export async function steamLocalScan(dir?: string): Promise<SteamLocalScan> {
+  if (!inDesktopApp()) {
+    const r = await fetch("/__rewind_dev/steam_local", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dir }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error);
+    return j.result as SteamLocalScan;
+  }
+  return invoke<SteamLocalScan>("steam_local_scan", { dir: dir ?? null });
 }

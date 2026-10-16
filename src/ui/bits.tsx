@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cleanTitle } from "../lib/canon.ts";
 import { STATUSES, SOURCE_LABEL, type Game, type Status } from "../lib/types.ts";
 import { Icon } from "./Icon.tsx";
+import { artSrc } from "../platform/native.ts";
 
 export function StatusPill({ status }: { status: Status }) {
   const s = STATUSES.find((x) => x.id === status)!;
@@ -9,16 +10,26 @@ export function StatusPill({ status }: { status: Status }) {
 }
 
 /**
- * Real artwork when there is some (Phase 3), otherwise a neutral placeholder that is
- * the same for every game: it shows the title and says plainly there's no art yet.
+ * The cached cover when there is one (portrait art; a landscape Steam header is shown
+ * centred on a blurred copy of itself, never stretched). Otherwise a neutral placeholder
+ * that is the same for every game: it shows the title and says plainly there's no art yet.
  */
-export function Cover({ game }: { game: Pick<Game, "title" | "coverPath" | "favorite"> }) {
-  const [failed, setFailed] = useState(false);
-  const src = game.coverPath && !failed ? game.coverPath : null;
+export function Cover({ game, eager }: { game: Pick<Game, "title" | "coverPath" | "favorite"> & { metaSource?: Record<string, string> }; eager?: boolean }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const src = artSrc(game.coverPath);
+  const show = src && failed !== src ? src : null;
+  const landscape = game.metaSource?.cover?.endsWith(":landscape") ?? false;
   return (
-    <div className="cover">
-      {src ? (
-        <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
+    <div className={"cover" + (show ? " has-art" : "") + (show && landscape ? " land" : "")}>
+      {show ? (
+        landscape ? (
+          <>
+            <img className="bg" src={show} alt="" loading={eager ? "eager" : "lazy"} aria-hidden="true" />
+            <img className="fg" src={show} alt="" loading={eager ? "eager" : "lazy"} onError={() => setFailed(show)} />
+          </>
+        ) : (
+          <img src={show} alt="" loading={eager ? "eager" : "lazy"} decoding="async" onError={() => setFailed(show)} />
+        )
       ) : (
         <div className="ph" aria-hidden="true">
           <span className="noart">no art yet</span>
@@ -36,6 +47,13 @@ export function Cover({ game }: { game: Pick<Game, "title" | "coverPath" | "favo
       )}
     </div>
   );
+}
+
+/** Small cached-cover thumbnail; an empty frame when there's no art (never a made-up image). */
+export function Thumb({ file, className }: { file: string | null; className?: string }) {
+  const [bad, setBad] = useState(false);
+  const src = artSrc(file);
+  return <div className={"thumb" + (className ? " " + className : "")} aria-hidden="true">{src && !bad ? <img src={src} alt="" loading="lazy" decoding="async" onError={() => setBad(true)} /> : null}</div>;
 }
 
 export function Stars({ value, onChange }: { value: number | null; onChange?(v: number | null): void }) {

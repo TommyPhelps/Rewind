@@ -63,6 +63,7 @@ const REQUIRED: Record<BackupTable, string[]> = {
   games: ["id", "title"],
   game_lengths: ["game_id", "kind", "hours", "source"],
   game_tags: ["game_id", "tag"],
+  game_meta: ["game_id", "provider", "status"],
   collections: ["id", "name"],
   collection_games: ["collection_id", "game_id"],
   playthroughs: ["id", "game_id"],
@@ -87,7 +88,8 @@ export function validateBackup(obj: unknown): ValidationResult {
   const data = b.data as Record<string, unknown>;
   for (const t of BACKUP_TABLES) {
     if (data[t] === undefined) {
-      warnings.push(`No "${t}" section; treated as empty.`);
+      const since = t === "game_meta" ? 3 : t === "rec_events" ? 2 : 1;
+      if (typeof b.schemaVersion !== "number" || b.schemaVersion >= since) warnings.push(`No "${t}" section; treated as empty.`);
       data[t] = [];
     }
     if (!Array.isArray(data[t])) {
@@ -230,10 +232,20 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
   const m = await matchGames(repo, d.games);
   const remap = (id: unknown) => m.map.get(String(id)) ?? String(id);
   let added = 0;
+  // A Steam app id can belong to only one game: never let a merge create a clash.
+  const takenApps = new Set(
+    (await repo.driver.select<Row>(`SELECT steam_app_id FROM games WHERE steam_app_id IS NOT NULL`)).map((r) => Number(r.steam_app_id)),
+  );
+  const claimApp = (v: unknown): number | null => {
+    const n = v == null ? NaN : Number(v);
+    if (!Number.isInteger(n) || takenApps.has(n)) return null;
+    takenApps.add(n);
+    return n;
+  };
   for (const g of d.games) {
     const target = m.map.get(String(g.id));
     if (!target) {
-      stmts.push(repo.insertStatement("games", { ...g, canon: canon(g.title) }));
+      stmts.push(repo.insertStatement("games", { ...g, canon: canon(g.title), steam_app_id: claimApp(g.steam_app_id) }));
       added++;
     } else {
       stmts.push({
@@ -242,10 +254,12 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
           description = COALESCE(description, ?), release_year = COALESCE(release_year, ?),
           developer = COALESCE(developer, ?), publisher = COALESCE(publisher, ?),
           rating = COALESCE(rating, ?), imported_playtime_min = COALESCE(imported_playtime_min, ?),
+          steam_playtime_min = COALESCE(steam_playtime_min, ?), steam_last_played = COALESCE(steam_last_played, ?),
+          steam_synced_at = COALESCE(steam_synced_at, ?), cover_path = COALESCE(cover_path, ?),
           notes = CASE WHEN notes = '' THEN COALESCE(?, '') ELSE notes END
           WHERE id = ?`,
         params: [
-          (g.steam_app_id as number) ?? null,
+          claimApp(g.steam_app_id),
           (g.storefront as string) ?? null,
           (g.description as string) ?? null,
           (g.release_year as number) ?? null,
@@ -253,14 +267,18 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
           (g.publisher as string) ?? null,
           (g.rating as number) ?? null,
           (g.imported_playtime_min as number) ?? null,
+          (g.steam_playtime_min as number) ?? null,
+          (g.steam_last_played as string) ?? null,
+          (g.steam_synced_at as string) ?? null,
+          (g.cover_path as string) ?? null,
           (g.notes as string) ?? null,
           target,
         ],
       });
     }
   }
-  for (const t of ["game_lengths", "game_tags", "playthroughs", "sessions"] as const) {
-    for (const row of d[t]) {
+  for (const t of ["game_lengths", "game_tags", "game_meta", "playthroughs", "sessions"] as const) {
+    for (const row of d[t] ?? []) {
       if (!gameIds.has(String(row.game_id))) continue;
       stmts.push(repo.insertStatement(t, { ...row, game_id: remap(row.game_id) }, "ignore"));
     }

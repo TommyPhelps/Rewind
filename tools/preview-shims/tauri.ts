@@ -6,3 +6,4 @@ export async function save() { return null; }
 export async function openUrl(url: string) { window.open(url, "_blank"); }
 export function getCurrentWindow() { throw new Error("no window"); }
 export async function availableMonitors() { return []; }
+export function convertFileSrc(p: string) { return p; }

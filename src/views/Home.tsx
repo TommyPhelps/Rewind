@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../state/store.tsx";
 import type { Nav } from "../App.tsx";
 import { Icon } from "../ui/Icon.tsx";
-import { fmtDateTime, StatusPill } from "../ui/bits.tsx";
+import { Cover, fmtDateTime, StatusPill, Thumb } from "../ui/bits.tsx";
 import { cleanTitle } from "../lib/canon.ts";
 import { displayLength, fmtHours } from "../lib/library.ts";
 import { STATUSES, type EventRow, type Game } from "../lib/types.ts";
@@ -10,7 +10,7 @@ import { describeEvent } from "./GameDetail.tsx";
 import { useTaste } from "../state/recs.ts";
 import { BAND_LABEL, DEFAULT_WEIGHTS, diversify, INTENT_LABEL, normalizeSession, recommend, type Intent, type Session } from "../rec/engine.ts";
 import { findUpNext, resumeCandidates, reviewUpNext, seriesFollowUps } from "../lib/queues.ts";
-import { progressRatio, progressState, progressText } from "../rec/progress.ts";
+import { lastPlayedAny, progressRatio, progressState, progressText } from "../rec/progress.ts";
 
 export function HomeView({ nav }: { nav: Nav }) {
   const { games, gameById, collections, settings, repo, updateGame, profile, recEvents, setLogFor } = useApp();
@@ -83,6 +83,9 @@ export function HomeView({ nav }: { nav: Nav }) {
             ) : (
               <>
                 <div className="tonight-card">
+                  <button className="tc-cover" onClick={() => nav.openGame(tonight[0].game.id)} aria-label={`Details for ${cleanTitle(tonight[0].game.title)}`}>
+                    <Cover game={tonight[0].game} eager />
+                  </button>
                   <div style={{ display: "grid", gap: "0.4rem", minWidth: 0 }}>
                     <div className="rc-chips">
                       <span className={"band b-" + tonight[0].band}>{BAND_LABEL[tonight[0].band]}</span>
@@ -144,6 +147,7 @@ export function HomeView({ nav }: { nav: Nav }) {
               <div className="list">
                 {playing.map((g) => (
                   <div className="li" key={g.id}>
+                    <Thumb file={g.coverPath} className="lt" />
                     <div className="t2">
                       <button className="linkish t" onClick={() => nav.openGame(g.id)}>{cleanTitle(g.title)}</button>
                       <span className="sub">{progressLine(g, allowEst)}</span>
@@ -175,6 +179,7 @@ export function HomeView({ nav }: { nav: Nav }) {
               <div className="list">
                 {resume.map((g) => (
                   <div className="li" key={g.id}>
+                    <Thumb file={g.coverPath} className="lt" />
                     <div className="t2">
                       <button className="linkish t" onClick={() => nav.openGame(g.id)}>{cleanTitle(g.title)}</button>
                       <span className="sub">
@@ -332,7 +337,7 @@ export function HomeView({ nav }: { nav: Nav }) {
 }
 
 function byRecent(a: Game, b: Game): number {
-  return (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? "");
+  return (lastPlayedAny(b) ?? "").localeCompare(lastPlayedAny(a) ?? "");
 }
 
 function progressLine(g: Game, allowEst: boolean): string {
@@ -341,7 +346,8 @@ function progressLine(g: Game, allowEst: boolean): string {
   const parts: string[] = [];
   if (p.hours >= 1) parts.push(progressText(g, allowEst));
   else parts.push(g.endless ? "endless" : len ? `not started · ~${fmtHours(len.hours)} long` : "not started");
-  if (g.lastPlayed) parts.push(`last played ${g.lastPlayed}`);
+  const lp = lastPlayedAny(g);
+  if (lp) parts.push(`last played ${lp}`);
   return parts.join(" · ");
 }
 

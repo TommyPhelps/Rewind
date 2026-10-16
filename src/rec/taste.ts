@@ -78,6 +78,8 @@ export interface TasteModel {
   evidence: Map<string, Evidence>;
   tagAff: Map<string, { aff: number; n: number }>;
   idf: Map<string, number>;
+  /** Developers of games you clearly enjoyed (or struggled with), from linked store data or your own entry. */
+  devAff: Map<string, { value: number; titles: string[] }>;
   traitPref: Record<Trait, { value: number; parts: PrefPart[] }>;
   structureTarget: number | null;
   profileMatches: { entry: string; list: "enjoyed" | "struggled"; gameId: string | null; title: string | null }[];
@@ -231,10 +233,11 @@ export function buildTaste(games: Game[], profile: GamingProfile, events: RecEve
   for (const g of games) {
     const ev = evidence.get(g.id);
     if (!ev) continue;
-    for (const { tag } of g.tags) {
+    for (const { tag, source } of g.tags) {
       const a = tagSum.get(tag) ?? { s: 0, w: 0, n: 0 };
-      a.s += ev.value * ev.weight;
-      a.w += ev.weight;
+      const sw = tagWeight(source);
+      a.s += ev.value * ev.weight * sw;
+      a.w += ev.weight * sw;
       a.n += 1;
       tagSum.set(tag, a);
     }
@@ -307,18 +310,48 @@ export function buildTaste(games: Game[], profile: GamingProfile, events: RecEve
   for (const T of TRAITS) traitPref[T].value = Math.max(-1, Math.min(1, traitPref[T].value));
   for (const [t, a] of tagAff) tagAff.set(t, { aff: Math.max(-1, Math.min(1, a.aff)), n: a.n });
 
-  return { evidence, tagAff, idf, traitPref, structureTarget, profileMatches, profileRules, learned, traits, burnout: new Set(burnout.keys()), lastReset };
+  // Developers: only from real evidence (ratings, favourites, your lists, finishing/dropping), never playtime.
+  const devAff = new Map<string, { value: number; titles: string[] }>();
+  for (const g of games) {
+    const ev = evidence.get(g.id);
+    if (!ev || ev.playtimeOnly || Math.abs(ev.value) < 0.45) continue;
+    for (const d of developersOf(g)) {
+      const cur = devAff.get(d) ?? { value: 0, titles: [] };
+      cur.value = Math.max(-1, Math.min(1, cur.value + ev.value * ev.weight));
+      cur.titles.push(g.title);
+      devAff.set(d, cur);
+    }
+  }
+
+  return { evidence, tagAff, idf, devAff, traitPref, structureTarget, profileMatches, profileRules, learned, traits, burnout: new Set(burnout.keys()), lastReset };
 }
 
-/** Tag overlap weighted by rarity (0..1). */
+/**
+ * How much a tag counts, by where it came from. Tags you set yourself and REWIND's curated
+ * tags count fully; tags mapped from Steam user tags or IGDB genres count less, so broad
+ * store labels can't outweigh what you've told REWIND.
+ */
+export function tagWeight(source: string): number {
+  return source === "steam_tags" || source === "igdb" ? 0.6 : 1;
+}
+
+/** Developers from your own entry, else the linked store data. Port studios ("Aspyr (Mac)") are left out. */
+export function developersOf(g: Game): string[] {
+  const raw = g.developer ? [g.developer] : (g.meta?.steam?.status === "linked" ? g.meta.steam.data?.developers : undefined) ?? (g.meta?.igdb?.status === "linked" ? g.meta.igdb.data?.developers : undefined) ?? [];
+  return [...new Set(raw.map((d) => d.trim()).filter((d) => d && !/\((mac|linux|macos|pc|windows)\)/i.test(d)))];
+}
+
+/** Tag overlap weighted by rarity (0..1). Store-derived tags count a little less. */
 export function similarity(a: Game, b: Game, idf: Map<string, number>): number {
-  const ta = new Set(a.tags.map((t) => t.tag).filter((t) => t !== "tool"));
-  const tb = new Set(b.tags.map((t) => t.tag).filter((t) => t !== "tool"));
+  const sa = new Map(a.tags.filter((t) => t.tag !== "tool").map((t) => [t.tag, tagWeight(t.source)]));
+  const sb = new Map(b.tags.filter((t) => t.tag !== "tool").map((t) => [t.tag, tagWeight(t.source)]));
+  const ta = new Set(sa.keys());
+  const tb = new Set(sb.keys());
   if (!ta.size || !tb.size) return 0;
   let inter = 0;
   let union = 0;
   for (const t of new Set([...ta, ...tb])) {
-    const w = idf.get(t) ?? 1;
+    const w = (idf.get(t) ?? 1) * Math.min(sa.get(t) ?? 1, sb.get(t) ?? 1);
     union += w;
     if (ta.has(t) && tb.has(t)) inter += w;
   }

@@ -14,10 +14,12 @@ import { ImportFlow, type ImportRequest } from "./views/ImportFlow.tsx";
 import { PickView, type PickRequest } from "./views/Pick.tsx";
 import { FeedbackDialog } from "./views/Feedback.tsx";
 import { LogSessionDialog } from "./views/LogSession.tsx";
+import { MetadataView } from "./views/Metadata.tsx";
+import { PHASE_LABEL, useSyncState } from "./state/metaSync.ts";
 import type { Session } from "./rec/engine.ts";
 import type { LibraryFilters } from "./lib/library.ts";
 
-export type ViewId = "home" | "library" | "discover" | "pick" | "mods" | "activity" | "collections" | "settings";
+export type ViewId = "home" | "library" | "discover" | "pick" | "mods" | "activity" | "collections" | "metadata" | "settings";
 
 const NAV: { id: ViewId; label: string; icon: string; phase?: number }[] = [
   { id: "home", label: "Home", icon: "home" },
@@ -27,6 +29,7 @@ const NAV: { id: ViewId; label: string; icon: string; phase?: number }[] = [
   { id: "mods", label: "Mods & Modpacks", icon: "mods", phase: 4 },
   { id: "activity", label: "Activity", icon: "activity" },
   { id: "collections", label: "Collections", icon: "collections" },
+  { id: "metadata", label: "Steam & metadata", icon: "download" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -49,6 +52,7 @@ export function App() {
   const [importReq, setImportReq] = useState<ImportRequest | null>(null);
   const [pendingFilters, setPendingFilters] = useState<Partial<LibraryFilters> | null>(null);
   const [pickReq, setPickReq] = useState<PickRequest | null>(null);
+  const sync = useSyncState();
 
   const clearPending = useCallback(() => setPendingFilters(null), []);
   const nav: Nav = useMemo(
@@ -124,7 +128,7 @@ export function App() {
   }
 
   const cur = NAV.find((n) => n.id === view)!;
-  const showDetail = !!selectedId && (view === "library" || view === "home" || view === "collections" || view === "activity");
+  const showDetail = !!selectedId && (view === "library" || view === "home" || view === "collections" || view === "activity" || view === "metadata");
   const upNext = collections.find((c) => c.name.toLowerCase() === "up next");
   const playing = games.filter((g) => g.status === "playing").length;
 
@@ -186,6 +190,7 @@ export function App() {
               {view === "collections" && <CollectionsView nav={nav} selectedId={selectedId} />}
               {view === "activity" && <ActivityView nav={nav} />}
               {view === "settings" && <SettingsView nav={nav} />}
+              {view === "metadata" && <MetadataView nav={nav} />}
               {view === "pick" && <PickView nav={nav} request={pickReq} />}
               {(view === "discover" || view === "mods") && <PlannedView view={view} />}
             </>
@@ -200,6 +205,11 @@ export function App() {
         </span>
         <span className="sep" />
         <span>{games.length} games</span>
+        {sync.running && (
+          <button className="sbtn" onClick={() => setView("metadata")} title="Metadata sync in progress">
+            <span className="led ok blink"><i /></span> {sync.progress ? `${PHASE_LABEL[sync.progress.phase]} ${sync.progress.total ? `${sync.progress.done}/${sync.progress.total}` : ""}` : "Starting sync…"}
+          </button>
+        )}
         <span>{playing} playing</span>
         {upNext && <span>{upNext.gameIds.length} up next</span>}
         <div className="right">
@@ -230,6 +240,8 @@ function subtitle(v: ViewId): string {
       return "a record of real changes only";
     case "settings":
       return "themes, profile, data and backups";
+    case "metadata":
+      return "your Steam library, covers and game details";
     case "pick":
       return "explainable suggestions from your own library";
     case "discover":

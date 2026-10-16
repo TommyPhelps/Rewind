@@ -160,7 +160,7 @@ export function SettingsView({ nav }: { nav: Nav }) {
           <div className="hd">Keyboard</div>
           <div className="bd">
             <dl className="kv">
-              <dt><span className="kbd">Ctrl+1</span> … <span className="kbd">Ctrl+8</span></dt><dd>Go to a section</dd>
+              <dt><span className="kbd">Ctrl+1</span> … <span className="kbd">Ctrl+9</span></dt><dd>Go to a section</dd>
               <dt><span className="kbd">Ctrl+F</span></dt><dd>Search the library</dd>
               <dt><span className="kbd">Ctrl+B</span></dt><dd>Collapse or expand the sidebar</dd>
               <dt><span className="kbd">↑ ↓ Home End</span></dt><dd>Move through the game list (Shift extends the selection)</dd>

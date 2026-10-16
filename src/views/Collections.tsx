@@ -7,7 +7,7 @@ import { CommitInput, StatusPill } from "../ui/bits.tsx";
 import { cleanTitle } from "../lib/canon.ts";
 import { displayLength, fmtHours } from "../lib/library.ts";
 import { findUpNext, resumeCandidates, reviewUpNext, seriesFollowUps, UP_NEXT, type ReviewAction, type ReviewItem } from "../lib/queues.ts";
-import { progressRatio, progressText } from "../rec/progress.ts";
+import { lastPlayedAny, progressRatio, progressText } from "../rec/progress.ts";
 import { useTaste } from "../state/recs.ts";
 import type { Game, Status } from "../lib/types.ts";
 
@@ -417,6 +417,7 @@ function progressLine(g: Game, allowEst: boolean): string {
   const parts: string[] = [];
   if (p.hours >= 1) parts.push(progressText(g, allowEst));
   else parts.push("not started");
-  if (g.lastPlayed) parts.push(`last played ${g.lastPlayed}`);
+  const lp = lastPlayedAny(g);
+  if (lp) parts.push(`last played ${lp}`);
   return parts.join(" · ");
 }

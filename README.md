@@ -1,4 +1,4 @@
-# REWIND 2.5
+# REWIND 3.0
 
 A personal gaming companion for Windows 11: your game library, what you're playing next, and (in later
 phases) an explainable "what should I play tonight" picker, Minecraft modpack discovery and a modding
@@ -13,8 +13,8 @@ Everything lives in one SQLite file on your PC. No account, no server, no teleme
 | 0 | Inspect the old REWIND artifact, its data, and the build options | Done |
 | 1 | Tauri app, SQLite, dark Y2K design system, library import, navigation, Windows build | Built (v2.0.0) |
 | 2 | Recommendation engine: Pick for me, Friction Check, taste profile, presets | Built (v2.1.0) |
-| 2.5 | Desktop layouts, readability, Home dashboard, session intent, queues, Activity overview | **Built (v2.5.0)** |
-| 3 | Steam import, metadata and cover art, series navigator, advanced collections | Planned |
+| 2.5 | Desktop layouts, readability, Home dashboard, session intent, queues, Activity overview | Built (v2.5.0) |
+| 3 | Steam library import, game metadata, cover art, offline cache, metadata-aware recommendations | **Built (v3.0.0)** |
 | 4 | Minecraft modpack discovery, modding companion, Discover, low-stimulation mode | Planned |
 | 5 | Backup completion, performance, polish | Planned |
 
@@ -112,6 +112,67 @@ game only once, so anything you remove stays removed. 11 obscure titles are left
 - **Mods** shows your old REWIND modpack list as saved, labelled unverified. Discover stays a labelled
   placeholder.
 
+### What Phase 3 adds: Steam, metadata and artwork
+
+Everything is on the new **Steam & metadata** screen (Ctrl+8).
+
+**Import your Steam library** (preview first, then one all-or-nothing transaction with a safety snapshot):
+- *Steam client on this PC* — reads the Steam client's own files (`localconfig.vdf`, app manifests).
+  No password, no key, works with a private profile. Sees games this account has launched or installed.
+- *Steam account (Web API)* — every owned game, via the official `IPlayerService/GetOwnedGames`.
+  Needs your free Steam Web API key (steamcommunity.com/dev/apikey) and "Game details" set to public.
+- Matching: already-linked app id → exact title → same title with edition wording → similar (shown,
+  never applied unless you choose) → new game. Two REWIND entries with one title are a conflict you
+  resolve. Tools, servers, soundtracks and test clients aren't ticked.
+- Steam's playtime is stored **separately** from the old app's figure (REWIND uses the larger) and a
+  smaller number never replaces a larger one. Ratings, notes, statuses, favourites and preferences are
+  never touched.
+
+**Details & covers** (background sync, cancellable, resumes where it stopped):
+- Links each game to Steam by app id, or by store search when the title matches exactly with no equally
+  good rival. Everything else waits in **Needs your decision** with candidates; "None of these" is
+  remembered. Titles that normalise to the same thing in your library (e.g. GTA V Legacy / Enhanced) are
+  only linked on a literal title match.
+- Store data in batches of 25 via Steam's `IStoreBrowseService/GetItems`: developers, publishers,
+  original release date, player modes, platforms, description, Steam user tags (with votes), artwork paths.
+- Artwork: the 600×900 library cover (falls back to the store header, shown centred on a blurred copy —
+  never stretched or invented), plus the header and, for games you open, the wide hero image. Cached
+  in `%APPDATA%\dev.tommy.rewind\artwork\`; missing files are fetched again on the next sync.
+- Optional **IGDB** (free Twitch Client ID + Secret): extra details and IGDB's player-submitted "time to
+  beat", stored as lengths labelled `igdb`. Your own hours always win.
+- Pacing: one store search every ~1.6 s, batched store reads, 4 image downloads at a time, retries with
+  back-off and Retry-After on rate limits. Offline: the run stops with "couldn't reach the internet" and
+  nothing already saved is lost or marked as failed.
+
+**What it changes, and what it never changes:** it adds tags mapped from well-voted Steam user tags
+(source "Steam user tags"; tags you removed are not put back), replaces *estimated* player modes with
+Steam's categories (never your own choice), adds IGDB lengths, and sets the cover unless you picked your
+own picture. Unlinking removes exactly what that link added. Title, status, rating, notes, your tags and
+your lengths are untouched; "Your corrections" fields in the details panel override store data.
+
+**Browsing:** cover grid in three sizes (S/M/L, 9–12 columns at 2560×1440) with status, Up Next position
+and playtime on each cover; small covers in list rows; filters for artwork / match state; sort by release
+year; search also matches developers and publishers. The details panel gains a banner, an *About* section
+where every fact shows its source, store links, and *Sources & artwork* to change or remove a match or use
+your own cover image.
+
+**Recommendations:** store-derived tags count at 0.6× of your own and REWIND's curated tags, so broad
+labels can't outweigh what you've told REWIND; ratings and feedback remain the strongest signals. New:
+developer affinity from games you rated or listed ("Made by BioWare, who also made STAR WARS Knights of
+the Old Republic, which you enjoyed"), Steam player modes keep multiplayer-only games out, and a game you
+played recently is never called "already played through" just because its hours passed an estimate.
+Explanations list "Details: Steam store / IGDB.com".
+
+**Keys and privacy:** the Steam key and IGDB credentials are stored only in the local database's
+`secrets` table, never in backups, and only sent to Steam or Twitch. The app only talks to an allow-list
+of Steam and IGDB hosts over HTTPS (enforced in Rust, including redirects). Nothing about your library
+is uploaded; each lookup sends only the game being looked up.
+
+**Limits, stated plainly:** Steam's store endpoints (`GetItems`, `storesearch`, `GetTagList`) are public
+and keyless but not formally documented by Valve, so they could change; `tools/probe-steam.mjs` (Actions →
+"Steam endpoint probe") re-checks them. HowLongToBeat has no public API, so REWIND only links to it.
+"Steam client on this PC" can't see owned games that were never installed or launched.
+
 ### What happened to the old app's data
 
 | Old artifact | REWIND 2 |
@@ -200,7 +261,9 @@ src/
   state/        app store (React context)
   views/ ui/    screens and components
   styles/       themes.css (5 skins as CSS variables), app.css
-src-tauri/      Rust: rusqlite bridge with real transactions, file I/O for chosen files, safety snapshots
+  meta/         Steam / IGDB clients, title matching, Steam import planner, metadata sync, VDF parser
+src-tauri/      Rust: rusqlite bridge with real transactions, file I/O for chosen files, safety snapshots,
+                HTTPS allow-list client + artwork cache (net.rs), Steam client file reader (steam_local.rs)
 tests/          node:test suites against node:sqlite (same SQL as the app)
 tools/          icon generator, browser preview build + dev SQL bridge (development only)
 ```
@@ -208,7 +271,17 @@ tools/          icon generator, browser preview build + dev SQL bridge (developm
 ## Testing record
 
 Automated (run here and in CI):
-- 48 tests (47 run here; 1 needs the real export file). v2.5 adds: session intents (continue / resume /
+- 77 tests (76 run here; 1 needs the real export file). Phase 3 adds: VDF and Steam client file
+  parsing, Steam store / search / owned-games / IGDB parsers against response shapes recorded from the
+  live endpoints, title matching (editions match, sequels never do, ties go to review), the Steam import
+  plan (exact / edition / new / tools / conflicts, idempotent re-import, ratings / notes / status untouched,
+  playtime kept separately and never lowered), the full sync against an invented fake Steam + IGDB
+  (batching, review queue, your choices and removed tags respected, offline mid-run keeps progress, cancel,
+  rate-limit retry, wrong IGDB secret, missing art re-downloaded, duplicate-title guard), backups that
+  include links but never keys, the v2 → v3 upgrade keeping every game / note / queue, and the
+  recommendation touchstones re-run with Steam data loaded (plus store tags counting less than a 1★
+  rating, and the developer explanation).
+- 2.5: 48 tests (47 run here; 1 needs the real export file). v2.5 adds: session intents (continue / resume /
   new / replay / different), sequels waiting for unfinished earlier games, KOTOR at 37h of ~40h counted
   as unfinished, concentration-heavy RPGs on low-energy nights, old saved sessions read correctly, Up Next
   review being suggestion-only with remembered dismissals, series follow-ups, "continue where you left
@@ -229,7 +302,13 @@ Automated (run here and in CI):
   delete with confirmation, all five themes, 1080p, 1440p, 960×600 minimum, 150% and 200% scaling,
   no layout overflow, no console errors. For 2.5 every screen was re-checked at 1920×1080, 2560×1440,
   2560×1440 at 150% and 200%, 1920×1080 at 125%, and 960×600, plus Spacious density at 130% text,
-  the Up Next review buttons, drag and keyboard reordering, and logging a session.
+  the Up Next review buttons, drag and keyboard reordering, and logging a session. For 3.0 the browser
+  preview answers network calls from the invented fake services (images say "TEST ART"): import from
+  "Steam on this PC" with your real 404-game export, sync details and covers, review queue, grid S/M/L,
+  list thumbnails, details banner and About, offline sync and offline import, and the same screen sizes
+  and scaling with no overflow.
 
-Not yet verified (needs a Windows PC): the compiled installer itself, first launch under WebView2,
-native Open/Save dialogs, window-position memory across your two monitors, and SmartScreen behaviour.
+Not yet verified (needs a Windows PC and the internet): the compiled installer itself, first launch under
+WebView2, native Open/Save dialogs, window-position memory across your two monitors, SmartScreen
+behaviour, real Steam / IGDB requests from the app (the endpoints themselves were checked from GitHub's
+servers), reading your real Steam folder, and cached covers loading through the asset protocol.
