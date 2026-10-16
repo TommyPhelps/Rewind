@@ -12,8 +12,9 @@ import { cleanTitle } from "../lib/canon.ts";
 import { displayLength, fmtHours } from "../lib/library.ts";
 import { SOURCE_LABEL, type Game, type GamingProfile, type Scale } from "../lib/types.ts";
 import { pole, TRAIT_LABEL, NOT_A_GAME, type Trait } from "./traits.ts";
-import { playtimeHours, REASONS, similarity, type RecEvent, type TasteModel } from "./taste.ts";
+import { REASONS, similarity, type RecEvent, type TasteModel } from "./taste.ts";
 import { seriesNeighbours, type SeriesInfo } from "./series.ts";
+import { progressRatio, progressState } from "./progress.ts";
 
 // ---------- session ----------
 
@@ -24,7 +25,16 @@ export type Commitment = "one" | "few" | "medium" | "long";
 export type StructurePref = "guided" | "balanced" | "open";
 export type DifficultyPref = "gentle" | "moderate" | "challenging";
 export type AvoidKey = "setup" | "difficulty" | "grind" | "dialogue" | "aimless" | "tutorials" | "commitment" | "horror" | "multiplayer";
-export type Progress = "either" | "continue" | "new";
+/** What you want to do this session. */
+export type Intent = "any" | "continue" | "resume" | "new" | "replay" | "different";
+export const INTENT_LABEL: Record<Intent, string> = {
+  any: "Anything",
+  continue: "Continue my current game",
+  resume: "Resume something paused",
+  new: "Start something new",
+  replay: "Replay something familiar",
+  different: "Something completely different",
+};
 
 export interface Session {
   experience: Experience | null;
@@ -34,11 +44,11 @@ export interface Session {
   structure: StructurePref | null;
   difficulty: DifficultyPref | null;
   avoid: AvoidKey[];
-  progress: Progress;
+  intent: Intent;
   includeWishlist: boolean;
   hideRejected: boolean;
-  /** Friction Check: "show me something completely different". */
-  different: boolean;
+  /** Suggest a sequel even while an earlier game in the series is unfinished. */
+  allowSequels: boolean;
 }
 
 export const EMPTY_SESSION: Session = {
@@ -49,11 +59,28 @@ export const EMPTY_SESSION: Session = {
   structure: null,
   difficulty: null,
   avoid: [],
-  progress: "either",
+  intent: "any",
   includeWishlist: false,
   hideRejected: false,
-  different: false,
+  allowSequels: false,
 };
+
+/** Reads a saved session, including ones saved by v2.1 (progress/different fields). */
+export function normalizeSession(raw: Record<string, unknown> | null | undefined): Session {
+  const r = { ...(raw ?? {}) } as Record<string, unknown>;
+  let intent = (r.intent as Intent) ?? "any";
+  if (!r.intent) {
+    if (r.different) intent = "different";
+    else if (r.progress === "continue") intent = "resume";
+    else if (r.progress === "new") intent = "new";
+  }
+  delete r.progress;
+  delete r.different;
+  const s = { ...EMPTY_SESSION, ...(r as Partial<Session>), intent };
+  if (!Object.prototype.hasOwnProperty.call(INTENT_LABEL, s.intent)) s.intent = "any";
+  if (!Array.isArray(s.avoid)) s.avoid = [];
+  return s;
+}
 
 export const EXPERIENCE_LABEL: Record<Experience, string> = {
   immersive: "Immersive adventure",
@@ -141,6 +168,8 @@ export interface Rec {
   commitment: string;
   sources: string[];
   deprioritized: { text: string; until: string } | null;
+  /** A sequel waiting for an unfinished earlier game. */
+  heldBack: boolean;
 }
 
 export interface RecResult {
@@ -213,12 +242,13 @@ function withAbsent(v: Record<Trait, number | null>, tagged: boolean): Record<Tr
 }
 
 const ENERGY_WISH: Record<Energy, [Trait, number][]> = {
-  low: [["energy", -1], ["difficulty", -0.7], ["tension", -0.6], ["setup", -0.5], ["grind", -0.2]],
+  // Tired evenings: not just "no reflexes" — long reading and heavy concentration are tiring too.
+  low: [["energy", -1], ["difficulty", -0.7], ["tension", -0.6], ["focus", -0.6], ["setup", -0.5], ["dialogue", -0.35], ["grind", -0.2]],
   medium: [],
   high: [["energy", 0.6], ["mastery", 0.4], ["difficulty", 0.2]],
 };
 const TIME_WISH: Record<TimeAvail, [Trait, number][]> = {
-  lt30: [["quick", 1.2], ["setup", -0.8], ["story", -0.3], ["dialogue", -0.3]],
+  lt30: [["quick", 1.2], ["setup", -0.8], ["story", -0.3], ["dialogue", -0.3], ["focus", -0.3]],
   "30to60": [["quick", 0.6], ["setup", -0.4]],
   "1to2": [["quick", 0.15]],
   "2to4": [["quick", -0.2], ["story", 0.15]],
@@ -242,13 +272,6 @@ function srcLabel(s: string | null | undefined): string {
   return SOURCE_LABEL[s] ?? s;
 }
 
-/** Played-through ratio against the main-story estimate, if one exists. */
-function progressRatio(g: Game, allowUnverified: boolean): { hours: number; est: number | null; ratio: number | null } {
-  const hours = playtimeHours(g);
-  const main = g.lengths.filter((l) => l.kind === "main" && (allowUnverified || l.source === "user"));
-  const est = main.length ? Math.min(...main.map((l) => l.hours)) : null;
-  return { hours, est, ratio: est ? hours / est : null };
-}
 
 function passPenalty(gameId: string, events: RecEvent[], now: Date): { pen: number; count: number; until: string | null; reasons: string[] } {
   let pen = 0;
@@ -293,13 +316,23 @@ export function recommend(input: RecInput): RecResult {
     if (solo && isGroupGame(g)) { ex("Need other players"); continue; }
     if (g.ownership === "not_owned") { ex("Not owned"); continue; }
     if (g.ownership === "wishlist" && !S.includeWishlist) { ex("Wishlist (not owned)"); continue; }
-    if (g.status === "completed" && S.experience !== "nostalgic") { ex("Finished (pick 'Something nostalgic' to include)"); continue; }
+    const replayMood = S.intent === "replay" || S.experience === "nostalgic";
+    if (g.status === "completed" && !replayMood) { ex("Finished (choose 'Replay something familiar' to include)"); continue; }
     if (S.hideRejected && recentlyPassed.has(g.id)) { ex("Passed on this week"); continue; }
     const pr = progressRatio(g, allowUnverified);
-    const started = pr.hours >= 1 && (pr.ratio == null || pr.ratio < 0.8);
+    const started = pr.hours >= 1 && (pr.ratio == null || pr.ratio < 1);
     const inProgress = g.status === "playing" || g.status === "paused";
-    if (S.progress === "continue" && !inProgress && !started) { ex("Not started (you chose 'continue')"); continue; }
-    if (S.progress === "new" && (inProgress || pr.hours >= 1)) { ex("Already started (you chose 'something new')"); continue; }
+    const state = progressState(g, allowUnverified);
+    if (S.intent === "continue" && g.status !== "playing") { ex("Not marked Playing"); continue; }
+    if (S.intent === "resume" && !(g.status === "paused" || (state === "started" && g.status === "backlog"))) {
+      ex(g.status === "playing" ? "Currently playing (choose 'Continue')" : "Not paused or part-played");
+      continue;
+    }
+    if (S.intent === "new" && (inProgress || pr.hours >= 1 || g.status === "replay")) { ex("Already started"); continue; }
+    if (S.intent === "replay" && !(state === "finished" || state === "likely_finished" || (pr.hours >= 20 && !g.endless))) {
+      ex("Not something you've played through");
+      continue;
+    }
 
     const tr = taste.traits.get(g.id)!;
     const v = tr.values;
@@ -333,17 +366,26 @@ export function recommend(input: RecInput): RecResult {
     if (S.energy && S.energy !== "medium") {
       const tm = traitMatch(v, ENERGY_WISH[S.energy]);
       const f: { text: string; c: number }[] = [];
+      let es = tm.s;
       if (S.energy === "low") {
-        if (tm.s >= 0.25) f.push({ text: "Easy-going enough for a low-energy night", c: tm.s });
-        else if (tm.s <= -0.2) {
+        // Not twitchy isn't the same as restful: long reading and heavy thinking wear you out too.
+        const conc = Math.max(v.focus ?? 0, v.dialogue ?? 0);
+        const reading = (v.dialogue ?? 0) >= 0.7;
+        if (conc >= 0.65) {
+          const c = -(conc - 0.5) * 0.9;
+          es += c * 0.6;
+          f.push({ text: `Needs steady concentration (${reading ? "lots of dialogue and reading" : "thinking-heavy"}) — tiring on a low-energy night`, c });
+        }
+        if (es >= 0.25) f.push({ text: "Easy-going enough for a low-energy night", c: es });
+        else if (es <= -0.2 && conc < 0.65) {
           const worst = tm.hits.filter((h) => h.c < 0).map((h) => TRAIT_LABEL[h.t].toLowerCase()).slice(0, 2);
-          f.push({ text: `Demanding for a low-energy night (${worst.join(", ")})`, c: tm.s });
+          f.push({ text: `Demanding for a low-energy night (${worst.join(", ")})`, c: es });
         }
       } else {
         if (tm.s >= 0.25) f.push({ text: "Rewards a high-energy session", c: tm.s });
         else if (tm.s <= -0.25) f.push({ text: "Pretty low-key for how much energy you have", c: tm.s });
       }
-      add("energy", tm.s, f);
+      add("energy", es, f);
     } else if (S.energy === "medium") {
       let s = 0.1;
       const f: { text: string; c: number }[] = [];
@@ -514,9 +556,17 @@ export function recommend(input: RecInput): RecResult {
         const main = [...ev.parts].sort((a, b) => Math.abs(b.value * b.weight) - Math.abs(a.value * a.weight))[0];
         f.push({ text: main.value < 0 && !main.label.startsWith("You") ? `You've struggled with it before (${main.label.toLowerCase().replace(/^on your /, "it's on your ")})` : main.label, c: s });
       }
-      const replayMood = S.experience === "nostalgic";
+      if (replayMood && ev && !ev.playtimeOnly && ev.value >= 0.4) {
+        s += 0.3;
+        f.push({ text: "A favourite worth revisiting", c: 0.3 });
+      }
       if (!inProgress && g.status !== "replay") {
-        if (pr.ratio != null && pr.ratio >= 0.8) {
+        if (pr.ratio != null && pr.ratio >= 0.7 && pr.ratio < 1 && started) {
+          // Close to the end of the estimate but not marked finished: estimates are rough, so this
+          // is a game to wrap up, not a replay.
+          s += 0.3;
+          f.push({ text: `Close to the end (${Math.round(pr.hours)}h of ~${pr.est}h main story) — a good one to wrap up`, c: 0.6 });
+        } else if (pr.ratio != null && pr.ratio >= 1) {
           // Enjoying it before doesn't make it a fresh pick: it's a replay unless you asked for one.
           if (!replayMood) {
             s = Math.min(s, 0) - 0.6;
@@ -537,6 +587,8 @@ export function recommend(input: RecInput): RecResult {
           } else f.push({ text: `You started this before${pct}`, c: 0.05 });
         }
       }
+      // Asking for something different: liking a game you already know well doesn't help it.
+      if (S.intent === "different" && (pr.hours >= 3 || (pr.ratio != null && pr.ratio >= 0.5)) && s > 0) s = 0;
       if (f.length) add("history", s, f);
     }
 
@@ -554,23 +606,34 @@ export function recommend(input: RecInput): RecResult {
       if (acc.length && !inProgress) add("passes", -0.3, [{ text: "You picked this recently and didn't start it", c: -0.3 }]);
     }
 
-    // Series order.
+    // Series order: a sequel waits until the game before it is finished (unless you say otherwise).
+    let heldBack = false;
     {
       const sn = seriesNeighbours(g, series, byId);
-      if (sn) {
-        const prev = sn.previous;
-        if (prev) {
-          const pp = progressRatio(prev, allowUnverified);
-          const evp = taste.evidence.get(prev.id);
-          const done = prev.status === "completed" || (pp.ratio ?? 0) >= 0.8 || (evp && !evp.playtimeOnly && evp.value > 0.4 && pp.hours >= 5);
-          if (done) add("series", 0.6, [{ text: `Natural follow-up to ${cleanTitle(prev.title)}${pp.hours >= 1 ? ` (you've put ${Math.round(pp.hours)}h into it)` : ""}`, c: 0.6 }]);
-          else if (pp.hours < 1 && pr.hours < 1) add("series", -0.3, [{ text: `${cleanTitle(prev.title)} comes first in the series and you haven't played it`, c: -0.3 }]);
+      const prev = sn?.previous;
+      if (prev && !inProgress && state !== "finished" && state !== "likely_finished") {
+        const ps = progressState(prev, allowUnverified);
+        const pp = progressRatio(prev, allowUnverified);
+        const pt = cleanTitle(prev.title);
+        if (ps === "finished") {
+          add("series", 0.6, [{ text: `Natural follow-up to ${pt}, which you've finished`, c: 0.6 }]);
+        } else if (ps === "likely_finished") {
+          add("series", 0.5, [{ text: `Natural follow-up to ${pt} (looks finished: ${Math.round(pp.hours)}h of ~${pp.est}h est.)`, c: 0.5 }]);
+        } else if (ps === "in_progress" || ps === "started") {
+          const why = prev.status === "playing" ? `you're still playing ${pt}` : prev.status === "paused" ? `${pt} is paused, not finished` : `you haven't finished ${pt} (${Math.round(pp.hours)}h in)`;
+          if (S.allowSequels) add("series", 0, [{ text: `Sequel to ${pt} — included because you allowed sequels`, c: 0 }]);
+          else {
+            heldBack = true;
+            add("series", -0.9, [{ text: `Follow-up to ${pt}: waiting because ${why} — it's in Series follow-ups`, c: -0.9 }]);
+          }
+        } else if (ps === "not_started" && pr.hours < 1 && !S.allowSequels) {
+          add("series", -0.4, [{ text: `${pt} comes first in the series and you haven't played it`, c: -0.4 }]);
         }
       }
     }
 
     // Something completely different: away from what you usually play and recently picked.
-    if (S.different) {
+    if (S.intent === "different") {
       let maxSim = 0;
       for (const o of loved) if (o.id !== g.id) maxSim = Math.max(maxSim, similarity(g, o, taste.idf));
       for (const e of recentAccepts) {
@@ -580,7 +643,7 @@ export function recommend(input: RecInput): RecResult {
       let s = 0.6 - maxSim * 2;
       const f: { text: string; c: number }[] = [];
       const own = taste.evidence.get(g.id);
-      if ((own && !own.playtimeOnly) || pr.hours >= 3) {
+      if ((own && !own.playtimeOnly) || pr.hours >= 3 || (pr.ratio != null && pr.ratio >= 0.5)) {
         s -= 0.7;
         f.push({ text: "You already know this one well — not exactly something different", c: -0.7 });
       } else if (s >= 0.3) f.push({ text: "Different from what you usually play", c: s });
@@ -591,7 +654,7 @@ export function recommend(input: RecInput): RecResult {
     // Ownership and progress.
     if (g.ownership === "owned") add("ownership", 0.4, [{ text: "Already in your library", c: 0.15 }]);
     else if (g.ownership === "wishlist") add("ownership", -0.4, [{ text: "On your wishlist — you don't own it yet", c: -0.4 }]);
-    if (g.status === "playing") add("progress", 0.7, [{ text: "You're currently playing it", c: 0.7 }]);
+    if (g.status === "playing") add("progress", S.intent === "continue" ? 1 : 0.7, [{ text: "You're currently playing it", c: 0.7 }]);
     else if (g.status === "paused") add("progress", 0.35, [{ text: "Paused — a chance to pick it back up", c: 0.35 }]);
     else if (g.status === "replay") add("progress", 0.3, [{ text: "Marked as a replay candidate", c: 0.3 }]);
     else if (g.status === "dropped") add("progress", -0.5, [{ text: "You dropped this before", c: -0.5 }]);
@@ -654,6 +717,7 @@ export function recommend(input: RecInput): RecResult {
       commitment,
       sources,
       deprioritized,
+      heldBack,
     });
   }
 
@@ -712,7 +776,7 @@ export function hashString(s: string): number {
 
 /** Picks among the stronger matches, weighted towards the best, skipping ones already shown. */
 export function surprisePick(results: Rec[], seed: number, skip: Set<string> = new Set()): Rec | null {
-  const pool = results.filter((r) => !skip.has(r.game.id) && r.band !== "weak" && !r.deprioritized).slice(0, 15);
+  const pool = results.filter((r) => !skip.has(r.game.id) && r.band !== "weak" && !r.deprioritized && !r.heldBack).slice(0, 15);
   const list = pool.length ? pool : results.filter((r) => !skip.has(r.game.id)).slice(0, 15);
   if (!list.length) return null;
   const min = Math.min(...list.map((r) => r.score));

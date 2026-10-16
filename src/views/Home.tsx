@@ -5,201 +5,351 @@ import { Icon } from "../ui/Icon.tsx";
 import { fmtDateTime, StatusPill } from "../ui/bits.tsx";
 import { cleanTitle } from "../lib/canon.ts";
 import { displayLength, fmtHours } from "../lib/library.ts";
-import { STATUSES, type EventRow } from "../lib/types.ts";
+import { STATUSES, type EventRow, type Game } from "../lib/types.ts";
 import { describeEvent } from "./GameDetail.tsx";
+import { useTaste } from "../state/recs.ts";
+import { BAND_LABEL, DEFAULT_WEIGHTS, diversify, INTENT_LABEL, normalizeSession, recommend, type Intent, type Session } from "../rec/engine.ts";
+import { findUpNext, resumeCandidates, reviewUpNext, seriesFollowUps } from "../lib/queues.ts";
+import { progressRatio, progressState, progressText } from "../rec/progress.ts";
 
 export function HomeView({ nav }: { nav: Nav }) {
-  const { games, gameById, collections, settings, repo, updateGame } = useApp();
+  const { games, gameById, collections, settings, repo, updateGame, profile, recEvents, setLogFor } = useApp();
+  const { taste, series } = useTaste();
+  const allowEst = settings.useUnverifiedLengths;
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [lastSession, setLastSession] = useState<Session | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
-  useEffect(() => {
-    void repo.recentEvents(8).then(setEvents);
-  }, [repo, games]);
 
-  const upNext = collections.find((c) => c.name.toLowerCase() === "up next");
-  const active = useMemo(() => games.filter((g) => g.status === "playing" || g.status === "paused"), [games]);
+  useEffect(() => {
+    void repo.recentEvents(10).then(setEvents);
+  }, [repo, games]);
+  useEffect(() => {
+    void repo.getSetting<Record<string, unknown>>("rec_last_session", {}).then((s) => setLastSession(normalizeSession(s)));
+    void repo.getSetting<string[]>("queue_review_dismissed", []).then((d) => setDismissed(new Set(d)));
+  }, [repo]);
+
+  const playing = useMemo(() => games.filter((g) => g.status === "playing").sort(byRecent), [games]);
+  const resume = useMemo(
+    () =>
+      resumeCandidates(games, allowEst).slice(0, 8),
+    [games, allowEst],
+  );
+  const upNext = findUpNext(collections);
+  const followUps = useMemo(() => seriesFollowUps(games, series, allowEst), [games, series, allowEst]);
+  const struggled = useMemo(() => new Set([...taste.evidence].filter(([, e]) => e.value < 0 && !e.playtimeOnly).map(([id]) => id)), [taste]);
+  const review = useMemo(() => reviewUpNext(upNext, games, series, { dismissed, struggled, allowUnverified: allowEst }), [upNext, games, series, dismissed, struggled, allowEst]);
+
+  // Tonight: whatever you last asked Pick for me, applied to today.
+  const tonight = useMemo(() => {
+    if (!lastSession) return [];
+    const r = recommend({ games, taste, events: recEvents, session: lastSession, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified: allowEst });
+    return diversify(r.results.filter((x) => !x.heldBack), 3, taste.idf);
+  }, [lastSession, games, taste, recEvents, profile, series, allowEst]);
   const counts = useMemo(() => STATUSES.map((s) => ({ ...s, n: games.filter((g) => g.status === s.id).length })), [games]);
-  const max = Math.max(1, ...counts.map((c) => c.n));
-  const stats = useMemo(() => {
-    const est = games.filter((g) => {
-      const l = displayLength(g, true);
-      return l && !l.verified;
-    }).length;
-    const confirmed = games.filter((g) => displayLength(g, true)?.verified).length;
-    const unknown = games.filter((g) => !g.endless && !displayLength(g, true)).length;
-    const mp = games.filter((g) => g.multiplayer === "mp_required" || g.multiplayer === "coop_focused").length;
-    const fav = games.filter((g) => g.favorite).length;
-    return { est, unknown, mp, fav, confirmed };
-  }, [games]);
+  const needsInfo = useMemo(() => games.filter((g) => !g.tags.length || !displayLength(g, allowEst)).length, [games, allowEst]);
+  const sessionDesc = lastSession ? describeSession(lastSession) : "";
+
+  const quick = (intent: Intent) => nav.pick({ ...(lastSession ?? {}), intent });
 
   return (
     <div className="content pad">
-      <div className="stack" style={{ maxWidth: "78rem" }}>
-        <div className="panel">
-          <div className="hero">
-            <span className="big">{games.length}</span>
-            <span className="dim">games in your library</span>
-            <form
-              className="search grow"
-              style={{ maxWidth: "26rem", marginLeft: "auto" }}
-              onSubmit={(e) => {
-                e.preventDefault();
-                nav.librarySearch(q);
-              }}
-            >
-              <Icon name="search" />
-              <input className="field" type="search" placeholder="Jump to a game…" value={q} onChange={(e) => setQ(e.target.value)} />
-            </form>
+      <div className="dash">
+        {/* Tonight */}
+        <section className="panel span2" aria-labelledby="h-tonight">
+          <div className="hd" id="h-tonight">
+            Tonight's recommendation
+            <span className="right">
+              <span className="count" title="The settings you last used in Pick for me">{sessionDesc}</span>
+            </span>
           </div>
-        </div>
-
-        <div className="panel">
-          <div className="hd">
-            Tonight
-            <span className="right dim mono" style={{ fontSize: "0.72rem", textTransform: "none", letterSpacing: 0 }}>one click opens Pick for me</span>
-          </div>
-          <div className="bd row tonight">
-            <button className="btn" onClick={() => nav.pick({ energy: "low", time: "1to2", avoid: ["difficulty", "setup"] })}>Low energy</button>
-            <button className="btn" onClick={() => nav.pick({ time: "lt30", commitment: "one", avoid: ["setup"] })}>Under 30 minutes</button>
-            <button className="btn" onClick={() => nav.pick({ experience: "story", energy: "medium" })}>A good story</button>
-            <button className="btn" onClick={() => nav.pick({ experience: "mastery", energy: "high", difficulty: "challenging" })}>Up for a challenge</button>
-            <button className="btn" onClick={() => nav.pick({ progress: "continue" })}>Continue something</button>
-            <span className="grow" />
-            <button className="btn primary" onClick={() => nav.pick(undefined, true)}>Surprise me</button>
-          </div>
-        </div>
-
-        <div className="grid2">
-          <div className="stack">
-            <div className="panel">
-              <div className="hd">
-                Now playing
-                <span className="right dim num">{active.length}</span>
-              </div>
-              <div className="bd flush">
-                {active.length === 0 ? (
-                  <div style={{ padding: "0.75rem" }}>
-                    <div className="empty">Nothing marked as playing. Start something from Up Next, or set a game to Playing.</div>
-                  </div>
-                ) : (
-                  <div className="list">
-                    {active.map((g) => (
-                      <div className="li" key={g.id}>
-                        <span className="t" onClick={() => nav.openGame(g.id)}>{cleanTitle(g.title)}</span>
-                        <StatusPill status={g.status} />
-                        {g.status === "paused" ? (
-                          <button className="btn sm" onClick={() => updateGame(g.id, { status: "playing" })}><Icon name="play" /> Resume</button>
-                        ) : (
-                          <button className="btn sm" onClick={() => updateGame(g.id, { status: "paused" })}><Icon name="pause" /> Pause</button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          <div className="bd" style={{ display: "grid", gap: "var(--gap)" }}>
+            <div className="intent-row" role="group" aria-label="What do you want to do?">
+              {(["continue", "resume", "new", "replay", "different"] as Intent[]).map((i) => (
+                <button key={i} className="btn sm" onClick={() => quick(i)}>
+                  {INTENT_LABEL[i]}
+                </button>
+              ))}
+              <span className="grow" />
+              <button className="btn primary" onClick={() => nav.pick(undefined, true)}>
+                <Icon name="pick" /> Surprise me
+              </button>
             </div>
-
-            <div className="panel">
-              <div className="hd">
-                Up next
-                <span className="right">
-                  {upNext && <button className="btn sm ghost" onClick={() => nav.go("collections")}>edit order</button>}
-                </span>
+            {tonight.length === 0 ? (
+              <div className="empty">
+                <b>No suggestion yet</b>
+                <span className="hint">Open Pick for me and choose what you're in the mood for.</span>
               </div>
-              <div className="bd flush">
-                {!upNext || upNext.gameIds.length === 0 ? (
-                  <div style={{ padding: "0.75rem" }}>
-                    <div className="empty">No "Up Next" list. Make a collection called Up Next and it shows here.</div>
-                  </div>
-                ) : (
-                  <div className="list">
-                    {upNext.gameIds.map((id, i) => {
-                      const g = gameById.get(id);
-                      if (!g) return null;
-                      const len = displayLength(g, settings.useUnverifiedLengths);
-                      return (
-                        <div className="li" key={id}>
-                          <span className="pos">{i + 1}.</span>
-                          <span className="t" onClick={() => nav.openGame(id)} title={g.title}>{cleanTitle(g.title)}</span>
-                          <span className="num dim">{g.endless ? "∞" : len ? fmtHours(len.hours) : ""}</span>
-                          {g.status === "playing" ? (
-                            <StatusPill status="playing" />
-                          ) : (
-                            <button className="btn sm" onClick={() => updateGame(id, { status: "playing" })} title="Set status to Playing">
-                              <Icon name="play" /> Start
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="stack">
-            <div className="panel">
-              <div className="hd">Library at a glance</div>
-              <div className="bd">
-                <div className="bars">
-                  {counts.map((c) => (
-                    <div className="bar" key={c.id}>
-                      <StatusPill status={c.id} />
-                      <div className="track">
-                        <div className="fill" style={{ width: `${(c.n / max) * 100}%` }} />
-                      </div>
-                      <span className="num" style={{ textAlign: "right" }}>{c.n}</span>
+            ) : (
+              <>
+                <div className="tonight-card">
+                  <div style={{ display: "grid", gap: "0.4rem", minWidth: 0 }}>
+                    <div className="rc-chips">
+                      <span className={"band b-" + tonight[0].band}>{BAND_LABEL[tonight[0].band]}</span>
+                      <StatusPill status={tonight[0].game.status} />
+                      <span className="chip">{tonight[0].commitment}</span>
                     </div>
-                  ))}
+                    <button className="linkish tt" onClick={() => nav.openGame(tonight[0].game.id)}>
+                      {cleanTitle(tonight[0].game.title)}
+                    </button>
+                    <ul className="pros">
+                      {tonight[0].pros.slice(0, 3).map((p) => <li key={p.text}>{p.text}</li>)}
+                    </ul>
+                    {tonight[0].cons[0] && (
+                      <ul className="cons">
+                        <li>{tonight[0].cons[0].text}</li>
+                      </ul>
+                    )}
+                  </div>
+                  <div style={{ display: "grid", gap: "0.4rem" }}>
+                    <button className="btn primary" onClick={() => nav.pick(lastSession ?? undefined)}>
+                      Open in Pick for me
+                    </button>
+                    <button className="btn" onClick={() => nav.openGame(tonight[0].game.id)}>Details</button>
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="hd">Data quality</div>
-              <div className="bd">
-                <dl className="kv">
-                  <dt>Lengths you've confirmed</dt>
-                  <dd className="num">{stats.confirmed}</dd>
-                  <dt>Old unverified estimates</dt>
-                  <dd className="num warn">{stats.est}</dd>
-                  <dt>Length unknown</dt>
-                  <dd className="num">{stats.unknown}</dd>
-                  <dt>Need other players</dt>
-                  <dd className="num">{stats.mp}</dd>
-                  <dt>Favorites</dt>
-                  <dd className="num">{stats.fav}</dd>
-                </dl>
-                <div className="dim" style={{ fontSize: "0.82rem", marginTop: "0.6rem" }}>
-                  Tags and lengths marked est. are estimates (old REWIND table or REWIND reference); Steam import and verified metadata arrive in Phase 3.
-                </div>
-              </div>
-            </div>
-
-            <div className="panel">
-              <div className="hd">
-                Recent activity
-                <span className="right"><button className="btn sm ghost" onClick={() => nav.go("activity")}>all</button></span>
-              </div>
-              <div className="bd flush">
-                {events.length === 0 ? (
-                  <div style={{ padding: "0.75rem" }} className="dim">Nothing yet.</div>
-                ) : (
-                  <div className="eventlog">
-                    {events.map((e) => (
-                      <div className="ev" key={e.id}>
-                        <time>{fmtDateTime(e.ts)}</time>
-                        <span>{describeEvent(e, e.gameId ? cleanTitle(gameById.get(e.gameId)?.title ?? "") : undefined)}</span>
+                {tonight.length > 1 && (
+                  <div className="list inset">
+                    {tonight.slice(1).map((r) => (
+                      <div className="li" key={r.game.id}>
+                        <span className={"band b-" + r.band}>{BAND_LABEL[r.band].replace(" fit", "")}</span>
+                        <div className="t2">
+                          <button className="linkish t" onClick={() => nav.openGame(r.game.id)}>{cleanTitle(r.game.title)}</button>
+                          <span className="sub">{r.pros[0]?.text}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
+              </>
+            )}
+          </div>
+        </section>
+
+        {/* Currently playing */}
+        <section className="panel" aria-labelledby="h-playing">
+          <div className="hd" id="h-playing">
+            Currently playing <span className="count">{playing.length}</span>
+            <span className="right">
+              <button className="btn sm" onClick={() => setLogFor({ gameId: null })}>Log session</button>
+            </span>
+          </div>
+          <div className="bd flush">
+            {playing.length === 0 ? (
+              <div className="empty">
+                <b>Nothing marked Playing</b>
+                <span className="hint">Open a game and set it to Playing, or let Pick for me suggest one.</span>
               </div>
+            ) : (
+              <div className="list">
+                {playing.map((g) => (
+                  <div className="li" key={g.id}>
+                    <div className="t2">
+                      <button className="linkish t" onClick={() => nav.openGame(g.id)}>{cleanTitle(g.title)}</button>
+                      <span className="sub">{progressLine(g, allowEst)}</span>
+                    </div>
+                    <div className="acts">
+                      <button className="btn sm" onClick={() => setLogFor({ gameId: g.id })} title="Log a play session">Log</button>
+                      <button className="btn sm" onClick={() => updateGame(g.id, { status: "paused" })} title="Pause"><Icon name="pause" /></button>
+                      <button className="btn sm" onClick={() => updateGame(g.id, { status: "completed" })} title="Mark completed"><Icon name="check" /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Continue where you left off */}
+        <section className="panel" aria-labelledby="h-resume">
+          <div className="hd" id="h-resume">
+            Continue where you left off <span className="count">{resume.length}</span>
+          </div>
+          <div className="bd flush">
+            {resume.length === 0 ? (
+              <div className="empty">
+                <b>Nothing paused or part-played</b>
+                <span className="hint">Paused games, and games with a couple of hours in that you haven't finished, show up here.</span>
+              </div>
+            ) : (
+              <div className="list">
+                {resume.map((g) => (
+                  <div className="li" key={g.id}>
+                    <div className="t2">
+                      <button className="linkish t" onClick={() => nav.openGame(g.id)}>{cleanTitle(g.title)}</button>
+                      <span className="sub">
+                        {g.status === "paused" ? "Paused · " : ""}
+                        {progressLine(g, allowEst)}
+                      </span>
+                    </div>
+                    <div className="acts">
+                      <button className="btn sm" onClick={() => updateGame(g.id, { status: "playing" })}>
+                        <Icon name="play" /> Resume
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Up Next */}
+        <section className="panel" aria-labelledby="h-upnext">
+          <div className="hd" id="h-upnext">
+            Up Next <span className="count">{upNext?.gameIds.length ?? 0}</span>
+            <span className="right">
+              {review.length > 0 && (
+                <button className="btn sm" onClick={() => nav.go("collections")} title="Suggestions for tidying your queue">
+                  <Icon name="alert" /> {review.length} to review
+                </button>
+              )}
+              <button className="btn sm ghost" onClick={() => nav.go("collections")}>Edit</button>
+            </span>
+          </div>
+          <div className="bd flush">
+            {!upNext || upNext.gameIds.length === 0 ? (
+              <div className="empty">
+                <b>Your queue is empty</b>
+                <span className="hint">Right-click any game in the Library → Add to collection → Up Next.</span>
+              </div>
+            ) : (
+              <div className="list">
+                {upNext.gameIds.map((id, i) => {
+                  const g = gameById.get(id);
+                  if (!g) return null;
+                  return (
+                    <div className="li" key={id}>
+                      <span className="pos">{i + 1}.</span>
+                      <div className="t2">
+                        <button className="linkish t" onClick={() => nav.openGame(id)} title={g.title}>{cleanTitle(g.title)}</button>
+                        <span className="sub">{progressLine(g, allowEst)}</span>
+                      </div>
+                      <StatusPill status={g.status} />
+                      {g.status !== "playing" && (
+                        <button className="btn sm" onClick={() => updateGame(id, { status: "playing" })} title="Set to Playing">
+                          <Icon name="play" /> Start
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Series follow-ups */}
+        <section className="panel" aria-labelledby="h-series">
+          <div className="hd" id="h-series">
+            Series follow-ups <span className="auto">automatic</span>
+          </div>
+          <div className="bd flush">
+            {followUps.length === 0 ? (
+              <div className="empty">
+                <b>No follow-ups right now</b>
+                <span className="hint">When you play or finish a game that has a sequel in your library, the sequel waits here.</span>
+              </div>
+            ) : (
+              <div className="list">
+                {followUps.slice(0, 8).map((f) => (
+                  <div className={"li" + (f.ready ? " ready" : "")} key={f.game.id}>
+                    <div className="t2">
+                      <button className="linkish t" onClick={() => nav.openGame(f.game.id)}>{cleanTitle(f.game.title)}</button>
+                      <span className="sub">{f.text}</span>
+                    </div>
+                    <span className={"chip " + (f.ready ? "own" : "")}>{f.ready ? "ready" : "waiting"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Recent activity */}
+        <section className="panel" aria-labelledby="h-act">
+          <div className="hd" id="h-act">
+            Recent activity
+            <span className="right">
+              <button className="btn sm ghost" onClick={() => nav.go("activity")}>All activity</button>
+            </span>
+          </div>
+          <div className="bd flush">
+            {events.length === 0 ? (
+              <div className="empty"><b>Nothing yet</b></div>
+            ) : (
+              <div className="eventlog">
+                {events.map((e) => (
+                  <div className="ev" key={e.id}>
+                    <time>{fmtDateTime(e.ts)}</time>
+                    <span>{describeEvent(e, e.gameId ? cleanTitle(gameById.get(e.gameId)?.title ?? "") : undefined)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Library overview: every number opens that slice of the library */}
+        <section className="panel" aria-labelledby="h-lib">
+          <div className="hd" id="h-lib">
+            Library <span className="count">{games.length} games</span>
+            <span className="right">
+              <form
+                className="search"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  nav.librarySearch(q);
+                }}
+              >
+                <Icon name="search" />
+                <input className="field" type="search" placeholder="Find a game…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the library" />
+              </form>
+            </span>
+          </div>
+          <div className="bd">
+            <div className="statgrid">
+              {counts.filter((c) => c.n > 0 || c.id === "playing").map((c) => (
+                <button key={c.id} className="stat" onClick={() => nav.library({ status: c.id })}>
+                  <span className="n">{c.n}</span>
+                  <span className="l">{c.label}</span>
+                </button>
+              ))}
+              <button className="stat" onClick={() => nav.library({ progress: "started" })}>
+                <span className="n">{games.filter((g) => progressState(g, allowEst) === "started").length}</span>
+                <span className="l">Started, unfinished</span>
+              </button>
+              <button className="stat" onClick={() => nav.library({ needsInfo: true })}>
+                <span className="n">{needsInfo}</span>
+                <span className="l">Missing tags or length</span>
+              </button>
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
+}
+
+function byRecent(a: Game, b: Game): number {
+  return (b.lastPlayed ?? "").localeCompare(a.lastPlayed ?? "");
+}
+
+function progressLine(g: Game, allowEst: boolean): string {
+  const p = progressRatio(g, allowEst);
+  const len = displayLength(g, allowEst);
+  const parts: string[] = [];
+  if (p.hours >= 1) parts.push(progressText(g, allowEst));
+  else parts.push(g.endless ? "endless" : len ? `not started · ~${fmtHours(len.hours)} long` : "not started");
+  if (g.lastPlayed) parts.push(`last played ${g.lastPlayed}`);
+  return parts.join(" · ");
+}
+
+function describeSession(s: Session): string {
+  const bits: string[] = [];
+  if (s.intent !== "any") bits.push(INTENT_LABEL[s.intent].toLowerCase());
+  if (s.experience) bits.push(s.experience);
+  if (s.energy) bits.push(`${s.energy} energy`);
+  if (s.time) bits.push(s.time.replace("lt30", "<30 min").replace("30to60", "30–60 min").replace("1to2", "1–2h").replace("2to4", "2–4h"));
+  return bits.length ? `based on: ${bits.join(", ")}` : "no session settings";
 }

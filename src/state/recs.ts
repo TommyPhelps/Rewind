@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "./store.tsx";
 import { buildTaste } from "../rec/taste.ts";
 import { buildSeriesIndex } from "../rec/series.ts";
-import { DEFAULT_WEIGHTS, EMPTY_SESSION, type Session, type Weights } from "../rec/engine.ts";
+import { DEFAULT_WEIGHTS, EMPTY_SESSION, normalizeSession, type Session, type Weights } from "../rec/engine.ts";
 
 export interface Preset {
   id: string;
@@ -40,11 +40,11 @@ export function usePickerSettings() {
   useEffect(() => {
     void (async () => {
       const [s, p, w] = await Promise.all([
-        repo.getSetting<Partial<Session>>("rec_last_session", {}),
+        repo.getSetting<Record<string, unknown>>("rec_last_session", {}),
         repo.getSetting<Preset[]>("rec_presets", []),
         repo.getSetting<Partial<Weights>>("rec_weights", {}),
       ]);
-      setSessionState({ ...EMPTY_SESSION, ...s, different: false });
+      setSessionState(normalizeSession(s));
       setPresets(p);
       setWeightsState({ ...DEFAULT_WEIGHTS, ...w });
       setLoaded(true);
@@ -54,7 +54,7 @@ export function usePickerSettings() {
   const setSession = useCallback(
     (next: Session) => {
       setSessionState(next);
-      void repo.setSetting("rec_last_session", { ...next, different: false }).catch(() => undefined);
+      void repo.setSetting("rec_last_session", next).catch(() => undefined);
     },
     [repo],
   );

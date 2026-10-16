@@ -89,7 +89,7 @@ export function TasteView({ nav }: { nav: Nav }) {
                           <span className="track"><span className="fill" style={{ width: `${(h / maxH) * 100}%` }} /></span>
                           <span className="num">{Math.round(h)}h</span>
                         </td>
-                        <td className={known ? (ev!.value >= 0.2 ? "ok" : ev!.value <= -0.2 ? "bad" : "") : "dim"} style={{ fontSize: "0.85rem" }}>
+                        <td className={known ? (ev!.value >= 0.2 ? "ok" : ev!.value <= -0.2 ? "bad" : "") : "dim"} style={{ fontSize: "var(--fs-s)" }}>
                           {known ? ev!.parts.filter((p) => p.kind !== "playtime").map((p) => p.label).join("; ") : "Only time spent: enjoyment unknown"}
                         </td>
                         <td>
@@ -161,7 +161,7 @@ export function TasteView({ nav }: { nav: Nav }) {
                         <span className={"pref-fill " + (p.value >= 0 ? "pos" : "neg")} style={p.value >= 0 ? { left: "50%", width: `${p.value * 50}%` } : { right: "50%", width: `${-p.value * 50}%` }} />
                       </span>
                     </td>
-                    <td style={{ fontSize: "0.82rem" }}>
+                    <td style={{ fontSize: "var(--fs-s)" }}>
                       {p.parts.map((x, i) => (
                         <span key={i} className={"why-part s-" + x.source.replace(/ /g, "-")}>
                           {x.source}: {x.label}
@@ -179,7 +179,7 @@ export function TasteView({ nav }: { nav: Nav }) {
         <div className="grid2">
           <div className="panel">
             <div className="hd">Your profile, as REWIND reads it</div>
-            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "0.88rem" }}>
+            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "var(--fs-s)" }}>
               <div>
                 {taste.profileMatches.map((m) => (
                   <div key={m.list + m.entry} className="pm">
@@ -205,7 +205,7 @@ export function TasteView({ nav }: { nav: Nav }) {
           </div>
           <div className="panel">
             <div className="hd">Your history with suggestions</div>
-            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "0.88rem" }}>
+            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "var(--fs-s)" }}>
               <dl className="kv">
                 <dt>Suggestions you started</dt>
                 <dd className="num">{accepts.length}</dd>
@@ -216,7 +216,7 @@ export function TasteView({ nav }: { nav: Nav }) {
               </dl>
               {dropCounts.size > 0 ? (
                 <div>
-                  <div className="mono dim" style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Why you've dropped games</div>
+                  <div className="mono dim" style={{ fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Why you've dropped games</div>
                   {[...dropCounts.entries()].sort((a, b) => b[1] - a[1]).map(([r, n]) => (
                     <div key={r} className="row" style={{ justifyContent: "space-between" }}>
                       <span>{REASONS[r]?.label ?? r}</span>

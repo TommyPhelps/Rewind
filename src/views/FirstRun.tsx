@@ -15,7 +15,7 @@ export function FirstRun({ nav }: { nav: Nav }) {
         <Logo />
         <div>
           <b>REWIND</b>
-          <div className="dim mono" style={{ fontSize: "0.8rem" }}>2.0 · your library lives on this PC</div>
+          <div className="dim mono" style={{ fontSize: "var(--fs-s)" }}>your library lives on this PC</div>
         </div>
       </div>
       <p style={{ margin: 0 }}>
@@ -25,7 +25,7 @@ export function FirstRun({ nav }: { nav: Nav }) {
         <Icon name="rewind" />
         <div>
           <b>Import from the REWIND artifact</b>
-          <div className="dim" style={{ fontSize: "0.88rem" }}>
+          <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
             The JSON file from the old app's "Download backup" button (or the export Claude made for you). Keeps playtime, statuses, notes and your Up Next order.
           </div>
         </div>
@@ -37,7 +37,7 @@ export function FirstRun({ nav }: { nav: Nav }) {
         <Icon name="folder" />
         <div>
           <b>Restore a REWIND 2 backup</b>
-          <div className="dim" style={{ fontSize: "0.88rem" }}>A backup saved from this app's Settings.</div>
+          <div className="dim" style={{ fontSize: "var(--fs-s)" }}>A backup saved from this app's Settings.</div>
         </div>
         <button className="btn" onClick={() => pick("Choose a REWIND 2 backup")}>
           Choose file…
@@ -47,7 +47,7 @@ export function FirstRun({ nav }: { nav: Nav }) {
         <Icon name="plus" />
         <div>
           <b>Start with an empty library</b>
-          <div className="dim" style={{ fontSize: "0.88rem" }}>You can import later from Settings → Data &amp; backup.</div>
+          <div className="dim" style={{ fontSize: "var(--fs-s)" }}>You can import later from Settings → Data &amp; backup.</div>
         </div>
         <button className="btn" onClick={() => void finishFirstRun()}>
           Start empty

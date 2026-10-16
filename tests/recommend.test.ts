@@ -8,75 +8,11 @@ import { Repo } from "../src/db/repo.ts";
 import { applyArtifactPlan, buildArtifactPlan, parseArtifactBackup } from "../src/migrate/artifactImport.ts";
 import { applyReferenceData } from "../src/migrate/reference.ts";
 import { buildTaste, type RecEvent } from "../src/rec/taste.ts";
-import { DEFAULT_WEIGHTS, diversify, EMPTY_SESSION, recommend, surprisePick, type Session } from "../src/rec/engine.ts";
-import { buildSeriesIndex } from "../src/rec/series.ts";
+import { diversify, surprisePick } from "../src/rec/engine.ts";
 import { DEFAULT_PROFILE } from "../src/data/profileDefaults.ts";
 import type { Game } from "../src/lib/types.ts";
+import { NOW, pos, rank, setup, top } from "./helpers.ts";
 
-const LIB: [string, number][] = [
-  ["STAR WARS™ Knights of the Old Republic™", 37.4],
-  ["STAR WARS™ Knights of the Old Republic™ II - The Sith Lords™", 4.5],
-  ["ELDEN RING", 161.3],
-  ["ELDEN RING NIGHTREIGN", 22],
-  ["The Witcher 3: Wild Hunt — Remastered", 210.9],
-  ["The Witcher 2: Assassins of Kings Enhanced Edition", 52],
-  ["Persona 4 Golden", 11.1],
-  ["Kenshi", 32.6],
-  ["The Elder Scrolls V: Skyrim", 42.3],
-  ["Project Zomboid", 75.9],
-  ["Cyberpunk 2077", 144],
-  ["Portal", 2.4],
-  ["Portal 2", 0],
-  ["LEGO® Star Wars™: The Skywalker Saga", 15.8],
-  ["DARK SOULS™: REMASTERED", 56.7],
-  ["DARK SOULS™ III", 15.8],
-  ["Sekiro™: Shadows Die Twice - GOTY Edition", 1],
-  ["Nioh 2 – The Complete Edition", 0],
-  ["Mass Effect™ Legendary Edition", 8],
-  ["Baldur's Gate 3", 10],
-  ["Disco Elysium - The Final Cut", 2],
-  ["Clair Obscur: Expedition 33", 12.9],
-  ["Tales of Berseria™", 0],
-  ["Hidden Folks", 0],
-  ["Old Man's Journey", 0],
-  ["Minit", 0],
-  ["Stardew Valley", 16],
-  ["Valheim", 43],
-  ["7 Days to Die", 11.4],
-  ["Grand Theft Auto V Legacy", 242.1],
-  ["Dead by Daylight", 88.7],
-  ["Marvel Rivals", 40.6],
-  ["Counter-Strike 2", 310],
-  ["Wallpaper Engine", 21.4],
-  ["Outlast", 0],
-  ["Amnesia: The Dark Descent", 0],
-  ["Factorio", 105],
-  ["Hollow Knight", 10],
-  ["BioShock™", 11],
-  ["BioShock® 2", 2],
-];
-
-export async function setup() {
-  const backup = {
-    state: { v: 1, settings: { basis: "plus", solo: true }, slots: {}, log: [] },
-    lib0: { g: LIB.map(([n, p]) => ({ id: n.toLowerCase(), n, ...(p ? { p } : {}) })) },
-  };
-  const repo = new Repo(nodeDriver());
-  await repo.init();
-  await applyArtifactPlan(repo, buildArtifactPlan(parseArtifactBackup(backup)));
-  await applyReferenceData(repo);
-  return repo;
-}
-
-const NOW = new Date("2026-10-20T20:00:00Z");
-const series = buildSeriesIndex();
-
-export function rank(games: Game[], s: Partial<Session> = {}, events: RecEvent[] = [], now = NOW) {
-  const taste = buildTaste(games, DEFAULT_PROFILE, events, now);
-  return recommend({ games, taste, events, session: { ...EMPTY_SESSION, ...s }, weights: DEFAULT_WEIGHTS, profile: DEFAULT_PROFILE, series, allowUnverified: true, now });
-}
-export const pos = (r: ReturnType<typeof rank>, title: string) => r.results.findIndex((x) => x.game.title.startsWith(title));
-const top = (r: ReturnType<typeof rank>, n: number) => r.results.slice(0, n).map((x) => x.game.title);
 const ev = (kind: string, title: string, games: Game[], reason: string | null, ts: string): RecEvent => ({
   id: 0,
   ts,
@@ -127,14 +63,18 @@ test("burnout on Cyberpunk and Skyrim doesn't count against story RPGs", async (
   }
 });
 
-test("KOTOR II is offered as the natural follow-up to KOTOR", async () => {
+test("KOTOR at 37h of ~40h counts as unfinished, so KOTOR II waits for it", async () => {
+  // Tommy is still playing KOTOR. Hours just short of a rough estimate never mean "finished".
   const games = await (await setup()).loadGames();
   const r = rank(games, { experience: "story", commitment: "long" });
-  const i = pos(r, "STAR WARS™ Knights of the Old Republic™ II");
-  assert.ok(i < 8, `top 8 for a long story session (#${i + 1})`);
-  assert.ok(r.results[i].pros.some((p) => /follow-up to STAR WARS Knights of the Old Republic/.test(p.text)));
+  const k2 = r.results[pos(r, "STAR WARS™ Knights of the Old Republic™ II")];
+  assert.ok(k2.heldBack, "sequel held back while KOTOR is unfinished");
+  assert.ok(k2.cons.some((c) => /Follow-up to STAR WARS Knights of the Old Republic/.test(c.text)), k2.cons.map((c) => c.text).join(" | "));
   const k1 = r.results[pos(r, "STAR WARS™ Knights of the Old Republic™")];
-  assert.ok(k1.cons.some((c) => /replay/.test(c.text)), "KOTOR itself (37h of ~40h) is treated as a replay");
+  assert.ok(!k1.cons.some((c) => /would be a replay/.test(c.text)), "KOTOR itself is not treated as a replay");
+  assert.ok(k1.pros.some((p) => /Close to the end/.test(p.text)), k1.pros.map((p) => p.text).join(" | "));
+  const resume = rank(games, { intent: "resume" });
+  assert.ok(top(resume, 100).includes("STAR WARS™ Knights of the Old Republic™"), "KOTOR is something to continue");
 });
 
 test("strong story + long-term favours story RPGs over sandboxes and replays", async () => {
@@ -275,9 +215,103 @@ test("reference data never overwrites your own edits", async () => {
 
 test("'something completely different' avoids games you already know", async () => {
   const games = await (await setup()).loadGames();
-  const r = rank(games, { different: true, energy: "low", time: "1to2" });
+  const r = rank(games, { intent: "different", energy: "low", time: "1to2" });
   for (const x of r.results.slice(0, 5)) {
     assert.ok(!["Portal", "Persona 4 Golden", "LEGO® Star Wars™: The Skywalker Saga"].includes(x.game.title), x.game.title);
     assert.ok(((x.game.importedPlaytimeMin ?? 0) / 60) < 3, `${x.game.title} is new to you`);
   }
+});
+
+// ---------- v2.5: session intent and series follow-ups ----------
+
+import { normalizeSession } from "../src/rec/engine.ts";
+
+async function withStatus(changes: [string, import("../src/lib/types.ts").Status][]) {
+  const repo = await setup();
+  for (const [title, status] of changes) {
+    const g = (await repo.loadGames()).find((x) => x.title.startsWith(title))!;
+    await repo.updateGame(g.id, { status });
+  }
+  return { repo, games: await repo.loadGames() };
+}
+
+test("Continue: only the game(s) you're playing", async () => {
+  const { games } = await withStatus([["STAR WARS™ Knights of the Old Republic™", "playing"]]);
+  const r = rank(games, { intent: "continue" });
+  assert.deepEqual(r.results.map((x) => x.game.title), ["STAR WARS™ Knights of the Old Republic™"]);
+  assert.ok(r.results[0].pros.some((p) => /currently playing/.test(p.text)));
+});
+
+test("a sequel waits while you're still playing the game before it", async () => {
+  const { games } = await withStatus([["STAR WARS™ Knights of the Old Republic™", "playing"]]);
+  for (const intent of ["any", "new"] as const) {
+    const r = rank(games, { intent, experience: "story", commitment: "long" });
+    const i = pos(r, "STAR WARS™ Knights of the Old Republic™ II");
+    if (i === -1) {
+      assert.equal(intent, "new", "only 'Start new' may leave it out entirely (it's 4.5h in)");
+      continue;
+    }
+    const x = r.results[i];
+    assert.ok(x.heldBack, `${intent}: held back`);
+    assert.ok(i >= 10, `${intent}: not a top-10 starting point (#${i + 1})`);
+    assert.ok(x.cons.some((c) => /still playing STAR WARS Knights of the Old Republic/.test(c.text)), x.cons.map((c) => c.text).join(" | "));
+  }
+  // …unless you ask for it.
+  const allowed = rank(games, { intent: "any", experience: "story", commitment: "long", allowSequels: true });
+  assert.equal(allowed.results[pos(allowed, "STAR WARS™ Knights of the Old Republic™ II")].heldBack, false);
+});
+
+test("once the first game is finished, the sequel becomes the natural follow-up", async () => {
+  const { games } = await withStatus([["STAR WARS™ Knights of the Old Republic™", "completed"]]);
+  const r = rank(games, { experience: "story", commitment: "long" });
+  const x = r.results[pos(r, "STAR WARS™ Knights of the Old Republic™ II")];
+  assert.ok(!x.heldBack);
+  assert.ok(x.pros.some((p) => /follow-up to STAR WARS Knights of the Old Republic, which you've finished/.test(p.text)));
+  assert.ok(pos(r, "STAR WARS™ Knights of the Old Republic™ II") < 8);
+});
+
+test("Resume: paused and part-played games only", async () => {
+  const { games } = await withStatus([["Hollow Knight", "paused"]]);
+  const r = rank(games, { intent: "resume" });
+  const titles = r.results.map((x) => x.game.title);
+  assert.ok(titles.includes("Hollow Knight"));
+  assert.ok(titles.includes("Persona 4 Golden"), "11h in, never finished");
+  assert.ok(!titles.includes("Hidden Folks"), "never started");
+  assert.ok(!titles.includes("ELDEN RING"), "played through, that's a replay");
+});
+
+test("Start new: nothing you've already started", async () => {
+  const games = await (await setup()).loadGames();
+  const r = rank(games, { intent: "new" });
+  for (const x of r.results) assert.ok((x.game.importedPlaytimeMin ?? 0) < 60, x.game.title);
+});
+
+test("Replay: familiar games you loved come first", async () => {
+  const games = await (await setup()).loadGames();
+  const r = rank(games, { intent: "replay" });
+  const t5 = top(r, 5);
+  assert.ok(t5.some((t) => ["ELDEN RING", "The Witcher 3: Wild Hunt — Remastered", "STAR WARS™ Knights of the Old Republic™", "DARK SOULS™: REMASTERED"].includes(t)), t5.join(", "));
+  for (const x of r.results) assert.ok((x.game.importedPlaytimeMin ?? 0) >= 60 * 1, `${x.game.title} is familiar`);
+  assert.ok(!r.results[0].cons.some((c) => /would be a replay/.test(c.text)), "no replay penalty when you asked for one");
+});
+
+test("long dialogue-heavy RPGs are not treated as low-energy picks", async () => {
+  const games = await (await setup()).loadGames();
+  const r = rank(games, { energy: "low", experience: "story", commitment: "long" });
+  const p4 = r.results[pos(r, "Persona 4 Golden")];
+  assert.ok(p4.cons.some((c) => /concentration|dialogue/i.test(c.text)), p4.cons.map((c) => c.text).join(" | "));
+  const disco = r.results[pos(r, "Disco Elysium")];
+  assert.ok(disco.cons.some((c) => /concentration|dialogue/i.test(c.text)));
+});
+
+test("saved v2.1 sessions are read correctly", () => {
+  assert.equal(normalizeSession({ progress: "continue" }).intent, "resume");
+  assert.equal(normalizeSession({ progress: "new" }).intent, "new");
+  assert.equal(normalizeSession({ different: true }).intent, "different");
+  assert.equal(normalizeSession({ intent: "bogus" }).intent, "any");
+  const s = normalizeSession({ energy: "low", avoid: ["grind"] });
+  assert.equal(s.energy, "low");
+  assert.deepEqual(s.avoid, ["grind"]);
+  assert.equal(s.allowSequels, false);
+  assert.ok(!("progress" in s) && !("different" in s));
 });

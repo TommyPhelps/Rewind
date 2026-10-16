@@ -433,6 +433,41 @@ export class Repo {
     );
   }
 
+  /** Moves games from one collection to the end of another, in one step. */
+  async moveBetweenCollections(fromId: string, toId: string, gameIds: string[]): Promise<void> {
+    const max = await this.db.select<{ m: number | null }>(`SELECT MAX(position) AS m FROM collection_games WHERE collection_id = ?`, [toId]);
+    let pos = Number(max[0]?.m ?? -1);
+    const t = nowIso();
+    const stmts: Statement[] = [];
+    for (const g of gameIds) {
+      stmts.push({ sql: `DELETE FROM collection_games WHERE collection_id = ? AND game_id = ?`, params: [fromId, g] });
+      stmts.push({ sql: `INSERT OR IGNORE INTO collection_games (collection_id, game_id, position, added_at) VALUES (?, ?, ?, ?)`, params: [toId, g, ++pos, t] });
+    }
+    await this.db.batch(stmts);
+  }
+
+  // ---------- play sessions (only what you log) ----------
+
+  async addSession(gameId: string, date: string, minutes: number | null, note = ""): Promise<string> {
+    const id = newId();
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayIso();
+    await this.db.batch([
+      { sql: `INSERT INTO sessions (id, game_id, started_at, minutes, source, note) VALUES (?, ?, ?, ?, 'manual', ?)`, params: [id, gameId, day, minutes, note] },
+      { sql: `UPDATE games SET last_played = CASE WHEN last_played IS NULL OR last_played < ? THEN ? ELSE last_played END, updated_at = ? WHERE id = ?`, params: [day, day, nowIso(), gameId] },
+      this.eventStatement("session", gameId, { date: day, minutes }),
+    ]);
+    return id;
+  }
+
+  async loadSessions(limit = 200): Promise<{ id: string; gameId: string; date: string; minutes: number | null; note: string }[]> {
+    const rows = await this.db.select<Row>(`SELECT * FROM sessions ORDER BY started_at DESC, rowid DESC LIMIT ?`, [limit]);
+    return rows.map((r) => ({ id: String(r.id), gameId: String(r.game_id), date: String(r.started_at), minutes: num(r.minutes), note: String(r.note ?? "") }));
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    await this.db.execute(`DELETE FROM sessions WHERE id = ?`, [id]);
+  }
+
   // ---------- settings ----------
 
   async getSetting<T>(key: string, fallback: T): Promise<T> {

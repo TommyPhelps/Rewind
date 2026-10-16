@@ -1,5 +1,6 @@
 import { cleanTitle, searchKey } from "./canon.ts";
 import type { Game, LengthKind, Ownership, Status } from "./types.ts";
+import { progressState } from "../rec/progress.ts";
 
 const UNVERIFIED = new Set(["legacy_table", "ai_estimate"]);
 const PRIORITY = (source: string) => (source === "user" ? 0 : UNVERIFIED.has(source) ? (source === "legacy_table" ? 2 : 3) : 1);
@@ -56,7 +57,16 @@ export interface LibraryFilters {
   favorite: boolean;
   collectionId: string;
   hideMultiplayer: boolean;
+  progress: "any" | "not_started" | "started" | "finished";
+  needsInfo: boolean;
 }
+
+export const PROGRESS_FILTERS: { id: LibraryFilters["progress"]; label: string }[] = [
+  { id: "any", label: "Any progress" },
+  { id: "not_started", label: "Not started" },
+  { id: "started", label: "Started, not finished" },
+  { id: "finished", label: "Finished / played through" },
+];
 
 export const DEFAULT_FILTERS: LibraryFilters = {
   query: "",
@@ -67,6 +77,8 @@ export const DEFAULT_FILTERS: LibraryFilters = {
   favorite: false,
   collectionId: "",
   hideMultiplayer: false,
+  progress: "any",
+  needsInfo: false,
 };
 
 const OPEN: Status[] = ["backlog", "playing", "paused", "replay"];
@@ -86,6 +98,12 @@ export function filterGames(
     if (f.tag && !g.tags.some((t) => t.tag === f.tag)) return false;
     if (collectionMembers && !collectionMembers.has(g.id)) return false;
     if (f.length !== "all" && lengthBucket(g, allowUnverified) !== f.length) return false;
+    if (f.needsInfo && g.tags.length > 0 && displayLength(g, allowUnverified)) return false;
+    if (f.progress !== "any") {
+      const st = progressState(g, allowUnverified);
+      const bucket = st === "not_started" ? "not_started" : st === "finished" || st === "likely_finished" ? "finished" : st === "dropped" ? "dropped" : "started";
+      if (bucket !== f.progress) return false;
+    }
     if (terms.length) {
       const hay = searchKey(g.title) + " " + g.tags.map((t) => t.tag).join(" ") + " " + searchKey(g.notes);
       if (!terms.every((t) => hay.includes(t))) return false;
@@ -94,7 +112,19 @@ export function filterGames(
   });
 }
 
-export type SortKey = "title" | "status" | "length" | "playtime" | "rating" | "updated" | "added";
+export type SortKey = "title" | "status" | "length" | "playtime" | "rating" | "updated" | "added" | "lastPlayed" | "fit";
+
+export const SORTS: { id: SortKey; label: string; dir: 1 | -1 }[] = [
+  { id: "title", label: "Title", dir: 1 },
+  { id: "fit", label: "Pick-for-me fit", dir: -1 },
+  { id: "status", label: "Status", dir: 1 },
+  { id: "lastPlayed", label: "Last played", dir: -1 },
+  { id: "playtime", label: "Time played", dir: -1 },
+  { id: "length", label: "Length", dir: -1 },
+  { id: "rating", label: "Your rating", dir: -1 },
+  { id: "added", label: "Recently added", dir: -1 },
+  { id: "updated", label: "Recently changed", dir: -1 },
+];
 
 const STATUS_ORDER: Record<Status, number> = {
   playing: 0,
@@ -110,7 +140,7 @@ export function sortTitle(t: string): string {
   return cleanTitle(t).toLowerCase().replace(/^the\s+/, "");
 }
 
-export function sortGames(games: Game[], key: SortKey, dir: 1 | -1, allowUnverified: boolean): Game[] {
+export function sortGames(games: Game[], key: SortKey, dir: 1 | -1, allowUnverified: boolean, fit?: Map<string, number>): Game[] {
   const val = (g: Game): number | string | null => {
     switch (key) {
       case "title":
@@ -127,6 +157,10 @@ export function sortGames(games: Game[], key: SortKey, dir: 1 | -1, allowUnverif
         return g.updatedAt;
       case "added":
         return g.createdAt;
+      case "lastPlayed":
+        return g.lastPlayed;
+      case "fit":
+        return fit?.get(g.id) ?? null;
     }
   };
   const decorated = games.map((g) => ({ g, v: val(g), t: sortTitle(g.title) }));

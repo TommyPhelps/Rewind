@@ -16,12 +16,14 @@ import {
   ENERGY_LABEL,
   EXPERIENCE_LABEL,
   hashString,
+  INTENT_LABEL,
   recommend,
   STRUCTURE_LABEL,
   surprisePick,
   TIME_LABEL,
   DEFAULT_WEIGHTS,
   type AvoidKey,
+  type Intent,
   type Rec,
   type Session,
   type Weights,
@@ -46,7 +48,6 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const [mainId, setMainId] = useState<string | null>(null);
   const [surpriseN, setSurpriseN] = useState(0);
-  const [showScore, setShowScore] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -67,7 +68,8 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
       }),
     [games, taste, recEvents, S, ps.weights, profile, series, settings.useUnverifiedLengths],
   );
-  const list = useMemo(() => diversify(result.results, 6, taste.idf, skipped), [result, taste.idf, skipped]);
+  const heldBack = useMemo(() => result.results.filter((r) => r.heldBack), [result]);
+  const list = useMemo(() => diversify(result.results.filter((r) => !r.heldBack), 6, taste.idf, skipped), [result, taste.idf, skipped]);
   const main: Rec | null = (mainId ? result.results.find((r) => r.game.id === mainId && !skipped.has(r.game.id)) : null) ?? list[0] ?? null;
   const alts = list.filter((r) => r.game.id !== main?.game.id).slice(0, 4);
 
@@ -146,7 +148,7 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
     });
 
   const activePreset = [...BUILT_IN_PRESETS, ...ps.presets].find((p) => sameSession({ ...EMPTY_SESSION, ...p.session }, S));
-  const hasSettings = !sameSession(S, { ...EMPTY_SESSION, progress: S.progress, includeWishlist: S.includeWishlist, hideRejected: S.hideRejected });
+  const hasSettings = !sameSession(S, { ...EMPTY_SESSION, intent: S.intent, includeWishlist: S.includeWishlist, hideRejected: S.hideRejected, allowSequels: S.allowSequels });
 
   if (!ps.loaded) return <div className="content pad dim">Loading…</div>;
 
@@ -167,13 +169,10 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
         {tab === "pick" && (
           <>
             <span className="divider" />
-            <span className="mono dim" style={{ fontSize: "0.78rem" }}>Friction check:</span>
+            <span className="mono dim" style={{ fontSize: "var(--fs-s)" }}>Friction check:</span>
             <div className="seg" role="group" aria-label="How do you feel about playing?">
-              <button aria-pressed={mood === "ready" && !S.different} onClick={() => { setMood("ready"); if (S.different) update({ different: false }); }}>
+              <button aria-pressed={mood === "ready"} onClick={() => setMood("ready")}>
                 Ready to play
-              </button>
-              <button aria-pressed={mood === "ready" && S.different} onClick={() => { setMood("ready"); update({ different: true }); }}>
-                Something completely different
               </button>
               <button aria-pressed={mood === "not_in_mood"} onClick={() => setMood("not_in_mood")}>
                 Not in the mood
@@ -193,11 +192,25 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
       {tab === "pick" && (
         <div className="pick">
           <aside className="pick-side" aria-label="Session settings">
+            <Section title="What do you want to do?">
+              <div className="intent-list" role="radiogroup" aria-label="What do you want to do?">
+                {(Object.keys(INTENT_LABEL) as Intent[]).map((k) => (
+                  <button key={k} role="radio" className="btn sm" aria-checked={S.intent === k} aria-pressed={S.intent === k} onClick={() => update({ intent: k })}>
+                    {INTENT_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+              <label className="check" title="Normally a sequel waits until the earlier game is finished">
+                <input type="checkbox" checked={S.allowSequels} onChange={(e) => update({ allowSequels: e.target.checked })} />
+                Allow sequels before I finish the earlier game
+              </label>
+            </Section>
+
             <Section title="Presets">
               <div className="chips">
                 {[...BUILT_IN_PRESETS, ...ps.presets].map((p) => (
                   <span key={p.id} className={"chip preset" + (activePreset?.id === p.id ? " on" : "")}>
-                    <button className="pname" onClick={() => update({ ...EMPTY_SESSION, progress: S.progress, includeWishlist: S.includeWishlist, hideRejected: S.hideRejected, ...p.session })}>
+                    <button className="pname" onClick={() => update({ ...EMPTY_SESSION, intent: S.intent, includeWishlist: S.includeWishlist, hideRejected: S.hideRejected, allowSequels: S.allowSequels, ...p.session })}>
                       {p.name}
                     </button>
                     {!p.builtIn && (
@@ -213,7 +226,7 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
                   <Icon name="plus" /> Save current as preset
                 </button>
                 {hasSettings && (
-                  <button className="btn sm ghost" onClick={() => update({ ...EMPTY_SESSION, progress: S.progress, includeWishlist: S.includeWishlist, hideRejected: S.hideRejected })}>
+                  <button className="btn sm ghost" onClick={() => update({ ...EMPTY_SESSION, intent: S.intent, includeWishlist: S.includeWishlist, hideRejected: S.hideRejected, allowSequels: S.allowSequels })}>
                     Clear all
                   </button>
                 )}
@@ -272,15 +285,6 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
                 <Section title="Difficulty">
                   <Seg value={S.difficulty} options={DIFFICULTY_LABEL} onChange={(difficulty) => update({ difficulty })} />
                 </Section>
-                <Section title="Start or continue">
-                  <div className="seg">
-                    {(["either", "continue", "new"] as const).map((p) => (
-                      <button key={p} aria-pressed={S.progress === p} onClick={() => update({ progress: p })}>
-                        {p === "either" ? "Either" : p === "continue" ? "Continue something" : "Start something new"}
-                      </button>
-                    ))}
-                  </div>
-                </Section>
                 <label className="check">
                   <input type="checkbox" checked={S.hideRejected} onChange={(e) => update({ hideRejected: e.target.checked })} />
                   Hide games I passed on this week
@@ -302,7 +306,7 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
                 }}
                 onDifferent={() => {
                   setMood("ready");
-                  update({ different: true });
+                  update({ intent: "different" });
                 }}
                 onLater={() => {
                   void addRecEvent("mood_skip", null);
@@ -311,12 +315,20 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
               />
             ) : !main ? (
               <div className="empty">
-                Nothing left to suggest with these settings{skipped.size ? " (you've skipped " + skipped.size + ")" : ""}.{" "}
-                {skipped.size > 0 && (
-                  <button className="btn sm" onClick={() => setSkipped(new Set())}>
-                    Start over
-                  </button>
-                )}
+                <b>{emptyTitle(S.intent, skipped.size)}</b>
+                <span className="hint">{emptyHint(S.intent)}</span>
+                <div className="row">
+                  {skipped.size > 0 && (
+                    <button className="btn sm" onClick={() => setSkipped(new Set())}>
+                      Start over
+                    </button>
+                  )}
+                  {S.intent !== "any" && (
+                    <button className="btn sm" onClick={() => update({ intent: "any" })}>
+                      Show anything instead
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               <>
@@ -327,14 +339,12 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
                   onPass={(e) => passMenu(e, main)}
                   onReroll={reroll}
                   onOpen={() => nav.openGame(main.game.id, "library")}
-                  showScore={showScore}
-                  toggleScore={() => setShowScore((v) => !v)}
                 />
                 {alts.length > 0 && (
                   <div className="panel">
                     <div className="hd">
                       Also worth considering
-                      <span className="right dim mono" style={{ fontSize: "0.72rem" }}>click to compare</span>
+                      <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>click to compare</span>
                     </div>
                     <div className="bd flush">
                       <div className="list">
@@ -358,11 +368,19 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
                     </div>
                   </div>
                 )}
-                <div className="dim mono" style={{ fontSize: "0.74rem" }}>
+                <div className="dim mono" style={{ fontSize: "var(--fs-xs)" }}>
                   {result.results.length} candidates
                   {result.excluded.length > 0 && <> · left out: {result.excluded.map((e) => `${e.count} ${e.reason.toLowerCase()}`).join(", ")}</>}
                   {skipped.size > 0 && <> · {skipped.size} skipped this session</>}
                 </div>
+                {heldBack.length > 0 && !S.allowSequels && (
+                  <div className="note" style={{ fontSize: "var(--fs-s)" }}>
+                    Waiting in Series follow-ups (not suggested while you're still on the earlier game):{" "}
+                    {heldBack.slice(0, 4).map((r) => cleanTitle(r.game.title)).join(", ")}
+                    {heldBack.length > 4 ? ` and ${heldBack.length - 4} more` : ""}.{" "}
+                    <button className="btn sm ghost" onClick={() => update({ allowSequels: true })}>Allow them</button>
+                  </div>
+                )}
               </>
             )}
           </section>
@@ -374,7 +392,7 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
         <SavePresetDialog
           onClose={() => setSavingPreset(false)}
           onSave={async (name) => {
-            const p: Preset = { id: crypto.randomUUID(), name, session: { ...S, different: false } };
+            const p: Preset = { id: crypto.randomUUID(), name, session: { ...S } };
             await ps.savePresets([...ps.presets, p]);
             setSavingPreset(false);
             toast(`Saved preset "${name}".`);
@@ -386,8 +404,23 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
 }
 
 function sameSession(a: Session, b: Session): boolean {
-  const norm = (s: Session) => JSON.stringify({ ...s, avoid: [...s.avoid].sort(), different: false });
+  const norm = (s: Session) => JSON.stringify({ ...s, avoid: [...s.avoid].sort() });
   return norm(a) === norm(b);
+}
+
+function emptyTitle(intent: Intent, skipped: number): string {
+  if (skipped) return `Nothing left to suggest (you've skipped ${skipped})`;
+  if (intent === "continue") return "Nothing is marked Playing";
+  if (intent === "resume") return "Nothing paused or part-played fits";
+  if (intent === "replay") return "No replay candidates fit these settings";
+  return "Nothing fits these settings";
+}
+
+function emptyHint(intent: Intent): string {
+  if (intent === "continue") return "Set a game to Playing from its details, or choose another option on the left.";
+  if (intent === "resume") return "Paused games and backlog games with time already in them appear here.";
+  if (intent === "replay") return "Replay looks at games you've finished or put lots of hours into.";
+  return "Try clearing a filter on the left.";
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
@@ -424,8 +457,6 @@ export function RecCard({
   onPass,
   onReroll,
   onOpen,
-  showScore,
-  toggleScore,
 }: {
   rec: Rec;
   big?: boolean;
@@ -433,25 +464,23 @@ export function RecCard({
   onPass?(e: { clientX: number; clientY: number }): void;
   onReroll?(): void;
   onOpen?(): void;
-  showScore?: boolean;
-  toggleScore?(): void;
 }) {
   const g = rec.game;
+  const own = g.ownership === "owned";
   return (
-    <article className={"panel reccard" + (big ? " big" : "")}>
+    <article className={"panel reccard" + (big ? " big" : "")} aria-label={`Suggestion: ${cleanTitle(g.title)}`}>
       <div className="rc-body">
         <Cover game={g} />
         <div className="rc-info">
-          <div className="row" style={{ gap: "0.4rem" }}>
-            <span className={"band b-" + rec.band}>{BAND_LABEL[rec.band]}</span>
-            <span className={"conf c-" + rec.confidence.level} title={rec.confidence.notes.join(" · ") || "Based on solid data"}>
-              {rec.confidence.level} confidence
-            </span>
-            <StatusPill status={g.status} />
-            {g.ownership !== "owned" && <span className="badge est">{g.ownership === "wishlist" ? "not owned · wishlist" : g.ownership}</span>}
+          <div className="rc-head">
+            <h2 className="rc-title">{cleanTitle(g.title)}</h2>
+            <div className="rc-chips">
+              <span className={"band b-" + rec.band}>{BAND_LABEL[rec.band]}</span>
+              <span className={"chip " + (own ? "own" : "notown")}>{own ? "Owned" : g.ownership === "wishlist" ? "Wishlist · not owned" : "Not owned"}</span>
+              <StatusPill status={g.status} />
+              <span className="chip" title="How much time this asks of you">{rec.commitment}</span>
+            </div>
           </div>
-          <h2 className="rc-title">{cleanTitle(g.title)}</h2>
-          <div className="mono dim" style={{ fontSize: "0.78rem" }}>{rec.commitment}</div>
           <div className="rc-why">
             <div>
               <h3>Why it fits</h3>
@@ -467,29 +496,8 @@ export function RecCard({
             </div>
           </div>
           {rec.deprioritized && (
-            <div className="note" style={{ fontSize: "0.85rem" }}>
+            <div className="note" style={{ fontSize: "var(--fs-s)" }}>
               {rec.deprioritized.text}. It's shown less until {rec.deprioritized.until}, then returns to normal.
-            </div>
-          )}
-          <div className="rc-src mono">
-            {rec.sources.join("  ·  ")}
-            {rec.confidence.notes.length > 0 && <> · {rec.confidence.notes.join(" · ")}</>}
-          </div>
-          {showScore && (
-            <div className="scorebars">
-              {rec.components.map((c) => (
-                <div key={c.key + c.label} className="sb">
-                  <span className="dim">{c.label}</span>
-                  <span className="sb-track">
-                    <span className="sb-mid" />
-                    <span className={"sb-fill " + (c.score >= 0 ? "pos" : "neg")} style={c.score >= 0 ? { left: "50%", width: `${c.score * 50}%` } : { right: "50%", width: `${-c.score * 50}%` }} />
-                  </span>
-                  <span className="num dim">×{c.weight.toFixed(1)}</span>
-                </div>
-              ))}
-              <div className="dim" style={{ fontSize: "0.78rem" }}>
-                Each bar is one factor from −1 to +1; weights are normalised. Bands, not exact percentages, because the inputs are estimates.
-              </div>
             </div>
           )}
           {(onPlay || onPass) && (
@@ -514,14 +522,40 @@ export function RecCard({
                   Details
                 </button>
               )}
-              <span className="grow" />
-              {toggleScore && (
-                <button className="btn sm ghost" onClick={toggleScore} aria-pressed={showScore}>
-                  {showScore ? "Hide scoring" : "Show scoring"}
-                </button>
-              )}
             </div>
           )}
+          <div className="rc-foot">
+            <span>
+              <span className="lbl2">Confidence</span>{" "}
+              <span className={"conf c-" + rec.confidence.level}>{rec.confidence.level}</span>
+            </span>
+            <span>
+              <span className="lbl2">Data</span> {rec.sources.length ? rec.sources.join(" · ") : "your library only"}
+            </span>
+          </div>
+          <details className="rc-more">
+            <summary>How this was scored</summary>
+            {rec.confidence.notes.length > 0 && (
+              <ul className="cons" style={{ fontSize: "var(--fs-s)" }}>
+                {rec.confidence.notes.map((n) => <li key={n}>{n}</li>)}
+              </ul>
+            )}
+            <div className="scorebars">
+              {rec.components.map((c) => (
+                <div key={c.key + c.label} className="sb">
+                  <span className="dim">{c.label}</span>
+                  <span className="sb-track">
+                    <span className="sb-mid" />
+                    <span className={"sb-fill " + (c.score >= 0 ? "pos" : "neg")} style={c.score >= 0 ? { left: "50%", width: `${c.score * 50}%` } : { right: "50%", width: `${-c.score * 50}%` }} />
+                  </span>
+                  <span className="num dim">×{c.weight.toFixed(1)}</span>
+                </div>
+              ))}
+              <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
+                Each bar is one factor from −1 to +1; weights are normalised. Shown as bands, not exact percentages, because many inputs are estimates.
+              </div>
+            </div>
+          </details>
         </div>
       </div>
     </article>
@@ -539,7 +573,7 @@ function NotInTheMood({ onBreak, onDifferent, onLater }: { onBreak(): void; onDi
           <button className="btn" onClick={onDifferent}>Show me something completely different</button>
           <button className="btn ghost" onClick={onLater}>Revisit later</button>
         </div>
-        <p className="dim" style={{ margin: 0, fontSize: "0.85rem" }}>Your settings are kept for next time.</p>
+        <p className="dim" style={{ margin: 0, fontSize: "var(--fs-s)" }}>Your settings are kept for next time.</p>
       </div>
     </div>
   );
@@ -587,7 +621,7 @@ function WeightsPanel({ weights, onChange }: { weights: Weights; onChange(w: Wei
               <span className="num">{weights[k] === 0 ? "off" : `${weights[k].toFixed(2)}×`}</span>
             </label>
           ))}
-          <div className="dim" style={{ fontSize: "0.85rem" }}>
+          <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
             Weights are normalised before scoring, so only their relative size matters. "Things to avoid" always counts fully, and games that need
             other players stay out while your profile says so.
           </div>

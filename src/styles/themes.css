@@ -3,6 +3,19 @@
 :root {
   color-scheme: dark;
   --scale: 1;
+  /* Density (Settings → Appearance). Comfortable is the default. */
+  --base: 15.5px;
+  --ctl: 2.3rem;      /* button / field height */
+  --ctl-sm: 1.95rem;  /* small button, segmented control */
+  --gap: 1rem;
+  --pad: 0.95rem;
+  /* Type scale: every size in the app comes from these. */
+  --fs-xs: 0.82rem;   /* meta, column headers, badges */
+  --fs-s: 0.9rem;     /* secondary text, buttons */
+  --fs-m: 1rem;       /* body */
+  --fs-l: 1.15rem;    /* emphasis */
+  --fs-xl: 1.5rem;    /* titles */
+  --fs-xxl: 2rem;
   --mono: "IBM Plex Mono", Consolas, "Cascadia Mono", "Lucida Console", ui-monospace, monospace;
   --body: "Atkinson Hyperlegible", "Segoe UI", Tahoma, Verdana, sans-serif;
   --pixel: "Silkscreen", "IBM Plex Mono", Consolas, monospace;
@@ -49,3 +62,6 @@
   --ok: #e8e8e8; --warn: #cfcfcf; --bad: #ff9b9b; --info: #dcdcdc;
   --sel: rgba(255, 255, 255, 0.1); --sel-strong: rgba(255, 255, 255, 0.2);
 }
+
+:root[data-density="compact"] { --base: 14px; --ctl: 2.05rem; --ctl-sm: 1.75rem; --gap: 0.7rem; --pad: 0.65rem; }
+:root[data-density="spacious"] { --base: 17px; --ctl: 2.55rem; --ctl-sm: 2.15rem; --gap: 1.3rem; --pad: 1.15rem; }

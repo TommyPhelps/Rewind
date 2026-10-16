@@ -1,4 +1,4 @@
-# REWIND 2.0
+# REWIND 2.5
 
 A personal gaming companion for Windows 11: your game library, what you're playing next, and (in later
 phases) an explainable "what should I play tonight" picker, Minecraft modpack discovery and a modding
@@ -12,7 +12,8 @@ Everything lives in one SQLite file on your PC. No account, no server, no teleme
 |---|---|---|
 | 0 | Inspect the old REWIND artifact, its data, and the build options | Done |
 | 1 | Tauri app, SQLite, dark Y2K design system, library import, navigation, Windows build | Built (v2.0.0) |
-| 2 | Recommendation engine: Pick for me, Friction Check, taste profile, presets | **Built (v2.1.0)** |
+| 2 | Recommendation engine: Pick for me, Friction Check, taste profile, presets | Built (v2.1.0) |
+| 2.5 | Desktop layouts, readability, Home dashboard, session intent, queues, Activity overview | **Built (v2.5.0)** |
 | 3 | Steam import, metadata and cover art, series navigator, advanced collections | Planned |
 | 4 | Minecraft modpack discovery, modding companion, Discover, low-stimulation mode | Planned |
 | 5 | Backup completion, performance, polish | Planned |
@@ -75,6 +76,41 @@ reference* table (`src/data/referenceTraits.ts`) of estimated tags, player modes
 236 of them, plus extra trait tags (guided, aimless, grind, punishing…) for well-known games. It is
 labelled `est.` everywhere, only fills unknown fields, never overwrites your edits, and is applied to a
 game only once, so anything you remove stays removed. 11 obscure titles are left unknown.
+
+### What 2.5 changes: desktop layout, readability, queues
+
+- **Layouts that use the screen.** Home, Activity and Settings are dashboards whose columns follow the
+  window width (one column in a small window, up to four at 2560×1440). Long text keeps a readable width;
+  nothing scrolls sideways at 960×600 or at 125/150/200% Windows scaling.
+- **Bigger, consistent type** on one scale, plus **Density** (Compact / Comfortable / Spacious) and text
+  size up to 150% in Settings → Appearance. Clearer status pills, focus rings and empty states.
+- **Home**: Tonight's recommendation (from your last Pick-for-me settings, with one-click intents),
+  Currently playing (log a session, pause, complete), Continue where you left off, Up Next (with a
+  review count), Series follow-ups, Recent activity, and a library overview where every number opens
+  that slice of the Library.
+- **Separate ideas, kept separate.** *Playing*, *Paused* and *Replay* are statuses you set. *Up Next* is
+  your own ordered list. *Series follow-ups*, *Continue where you left off* and *Replay candidates* are
+  automatic lists that update themselves.
+- **Hours near an estimate no longer mean "finished".** A game counts as probably finished only once your
+  hours pass the main-story estimate. KOTOR at 37h of ~40h is unfinished, so KOTOR II waits in Series
+  follow-ups instead of being suggested.
+- **Review your queue** (Collections → Up Next): suggestions such as "you're playing KOTOR now; remove
+  it from Up Next?" or "KOTOR II follows a game you haven't finished". Nothing changes until you click,
+  and "Keep as is" is remembered. Your imported statuses and queue were not touched.
+- **Session intent** in Pick for me: Anything, Continue my current game, Resume something paused, Start
+  something new, Replay something familiar, Something completely different. Sequels wait for the earlier
+  game unless you tick "Allow sequels before I finish the earlier game". Long, dialogue-heavy RPGs are no
+  longer treated as low-energy picks ("Needs steady concentration").
+- **Recommendation card**: title, fit, ownership, status and commitment up top; why it fits / why it might
+  not; confidence and data sources; "How this was scored" expands.
+- **Collections**: three panels (lists, the open list, game details), drag-and-drop or Alt+↑/↓ to
+  reorder, move to top, move to another collection, Del to remove.
+- **Activity**: play sessions you log (REWIND never invents history), recently started, completed with
+  dates, paused, recent Pick-for-me choices, and the full log with a filter.
+- **Library**: two-line rows with progress ("37h of ~40h main story · Up Next #1"), progress and
+  "needs info" filters, sort by last played or Pick-for-me fit, neutral cover placeholders (no fake art).
+- **Mods** shows your old REWIND modpack list as saved, labelled unverified. Discover stays a labelled
+  placeholder.
 
 ### What happened to the old app's data
 
@@ -172,7 +208,13 @@ tools/          icon generator, browser preview build + dev SQL bridge (developm
 ## Testing record
 
 Automated (run here and in CI):
-- 33 tests, including 17 for recommendations: KOTOR II as the follow-up to KOTOR, souls-likes for
+- 48 tests (47 run here; 1 needs the real export file). v2.5 adds: session intents (continue / resume /
+  new / replay / different), sequels waiting for unfinished earlier games, KOTOR at 37h of ~40h counted
+  as unfinished, concentration-heavy RPGs on low-energy nights, old saved sessions read correctly, Up Next
+  review being suggestion-only with remembered dismissals, series follow-ups, "continue where you left
+  off" skipping endless and multiplayer games, statuses / dates / logged sessions persisting, and moving
+  and reordering between collections.
+- Phase 2: KOTOR II follow-up order, souls-likes for
   mastery (but not 161h Elden Ring as a "new" pick), gentle games for cozy/low energy, Kenshi / Project
   Zomboid / Skyrim deprioritised but never banned, burnout not poisoning story RPGs, playtime ≠ enjoyment,
   passes fading after their cooldown, determinism, multiplayer exclusion, and a v1 → v2 database upgrade
@@ -185,7 +227,9 @@ Automated (run here and in CI):
 - The UI was driven in headless Chromium against real SQLite: full first-run import, edits persisting
   across reload, bulk edit, context menu, collections, backup export → merge restore → replace restore,
   delete with confirmation, all five themes, 1080p, 1440p, 960×600 minimum, 150% and 200% scaling,
-  no layout overflow, no console errors.
+  no layout overflow, no console errors. For 2.5 every screen was re-checked at 1920×1080, 2560×1440,
+  2560×1440 at 150% and 200%, 1920×1080 at 125%, and 960×600, plus Spacious density at 130% text,
+  the Up Next review buttons, drag and keyboard reordering, and logging a session.
 
 Not yet verified (needs a Windows PC): the compiled installer itself, first launch under WebView2,
 native Open/Save dialogs, window-position memory across your two monitors, and SmartScreen behaviour.

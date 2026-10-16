@@ -13,7 +13,9 @@ import { FirstRun } from "./views/FirstRun.tsx";
 import { ImportFlow, type ImportRequest } from "./views/ImportFlow.tsx";
 import { PickView, type PickRequest } from "./views/Pick.tsx";
 import { FeedbackDialog } from "./views/Feedback.tsx";
+import { LogSessionDialog } from "./views/LogSession.tsx";
 import type { Session } from "./rec/engine.ts";
+import type { LibraryFilters } from "./lib/library.ts";
 
 export type ViewId = "home" | "library" | "discover" | "pick" | "mods" | "activity" | "collections" | "settings";
 
@@ -33,6 +35,8 @@ export interface Nav {
   openGame(id: string, view?: ViewId): void;
   startImport(r: ImportRequest): void;
   librarySearch(q: string): void;
+  /** Opens the Library with these filters. */
+  library(filters: Partial<LibraryFilters>): void;
   /** Opens Pick for me with a ready-made session (and optionally an instant Surprise). */
   pick(session?: Partial<Session>, surprise?: boolean): void;
 }
@@ -43,9 +47,10 @@ export function App() {
   const [view, setView] = useState<ViewId>("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [importReq, setImportReq] = useState<ImportRequest | null>(null);
-  const [pendingQuery, setPendingQuery] = useState<string | null>(null);
+  const [pendingFilters, setPendingFilters] = useState<Partial<LibraryFilters> | null>(null);
   const [pickReq, setPickReq] = useState<PickRequest | null>(null);
 
+  const clearPending = useCallback(() => setPendingFilters(null), []);
   const nav: Nav = useMemo(
     () => ({
       go: (v) => setView(v),
@@ -55,7 +60,11 @@ export function App() {
       },
       startImport: (r) => setImportReq(r),
       librarySearch: (q) => {
-        setPendingQuery(q);
+        setPendingFilters({ query: q });
+        setView("library");
+      },
+      library: (filters) => {
+        setPendingFilters(filters);
         setView("library");
       },
       pick: (session, surprise) => {
@@ -172,7 +181,7 @@ export function App() {
             <>
               {view === "home" && <HomeView nav={nav} />}
               {view === "library" && (
-                <LibraryView nav={nav} selectedId={selectedId} onSelect={setSelectedId} pendingQuery={pendingQuery} clearPendingQuery={() => setPendingQuery(null)} />
+                <LibraryView nav={nav} selectedId={selectedId} onSelect={setSelectedId} pendingFilters={pendingFilters} clearPending={clearPending} />
               )}
               {view === "collections" && <CollectionsView nav={nav} selectedId={selectedId} />}
               {view === "activity" && <ActivityView nav={nav} />}
@@ -202,6 +211,7 @@ export function App() {
 
       {importReq && <ImportFlow req={importReq} onClose={() => setImportReq(null)} nav={nav} />}
       <FeedbackDialog />
+      <LogSessionDialog />
       <ConfirmHost />
       <Toasts />
     </div>

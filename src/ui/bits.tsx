@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cleanTitle } from "../lib/canon.ts";
 import { STATUSES, SOURCE_LABEL, type Game, type Status } from "../lib/types.ts";
 import { Icon } from "./Icon.tsx";
@@ -8,31 +8,24 @@ export function StatusPill({ status }: { status: Status }) {
   return <span className={"st st-" + status}>{s.label}</span>;
 }
 
-function hueOf(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
-  return (h >>> 0) % 360;
-}
-
-function initials(title: string): string {
-  const words = cleanTitle(title)
-    .replace(/[^A-Za-z0-9 ]+/g, " ")
-    .split(" ")
-    .filter((w) => w && !/^(the|of|a|an|and)$/i.test(w));
-  return (words.slice(0, 3).map((w) => w[0]).join("") || "?").toUpperCase();
-}
-
-/** Cover art, or a generated placeholder tile when no artwork is cached yet. */
+/**
+ * Real artwork when there is some (Phase 3), otherwise a neutral placeholder that is
+ * the same for every game: it shows the title and says plainly there's no art yet.
+ */
 export function Cover({ game }: { game: Pick<Game, "title" | "coverPath" | "favorite"> }) {
   const [failed, setFailed] = useState(false);
   const src = game.coverPath && !failed ? game.coverPath : null;
   return (
-    <div className="cover" style={{ "--h": String(hueOf(game.title)) } as unknown as CSSProperties}>
+    <div className="cover">
       {src ? (
         <img src={src} alt="" loading="lazy" onError={() => setFailed(true)} />
       ) : (
         <div className="ph" aria-hidden="true">
-          <span className="ini">{initials(game.title)}</span>
+          <span className="noart">no art yet</span>
+          <svg className="glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <rect x="3" y="5" width="18" height="14" />
+            <path d="M3 15l5-4 4 3 3-2 6 4" />
+          </svg>
           <span className="t">{cleanTitle(game.title)}</span>
         </div>
       )}

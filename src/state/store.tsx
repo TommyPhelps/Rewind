@@ -36,6 +36,9 @@ interface Store {
   /** Asks "why did you drop it?" / "how was it?" after a single game's status changes. */
   feedbackFor: { gameId: string; kind: "dropped" | "completed" } | null;
   setFeedbackFor(f: { gameId: string; kind: "dropped" | "completed" } | null): void;
+  /** Opens the "Log a play session" dialog (gameId null = choose a game). */
+  logFor: { gameId: string | null } | null;
+  setLogFor(f: { gameId: string | null } | null): void;
   reloadAll(): Promise<void>;
   reloadCollections(): Promise<void>;
   updateGame(id: string, patch: GamePatch): Promise<void>;
@@ -57,6 +60,7 @@ const Ctx = createContext<Store | null>(null);
 
 const LS_THEME = "rewind.theme";
 const LS_SCALE = "rewind.scale";
+const LS_DENSITY = "rewind.density";
 
 /** Applied before React renders so the window never flashes the wrong theme. */
 export function applyEarlyTheme() {
@@ -65,6 +69,8 @@ export function applyEarlyTheme() {
     if (t) document.documentElement.dataset.skin = t;
     const s = localStorage.getItem(LS_SCALE);
     if (s) document.documentElement.style.setProperty("--scale", s);
+    const d = localStorage.getItem(LS_DENSITY);
+    if (d) document.documentElement.dataset.density = d;
   } catch {
     /* storage unavailable: defaults apply */
   }
@@ -72,10 +78,12 @@ export function applyEarlyTheme() {
 
 function applyLook(s: AppSettings) {
   document.documentElement.dataset.skin = s.theme;
+  document.documentElement.dataset.density = s.density;
   document.documentElement.style.setProperty("--scale", String(s.uiScale));
   try {
     localStorage.setItem(LS_THEME, s.theme);
     localStorage.setItem(LS_SCALE, String(s.uiScale));
+    localStorage.setItem(LS_DENSITY, s.density);
   } catch {
     /* ignore */
   }
@@ -93,6 +101,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [firstRun, setFirstRun] = useState(false);
   const [recEvents, setRecEvents] = useState<RecEvent[]>([]);
   const [feedbackFor, setFeedbackFor] = useState<Store["feedbackFor"]>(null);
+  const [logFor, setLogFor] = useState<Store["logFor"]>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmState, setConfirmState] = useState<Store["confirmState"]>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -257,6 +266,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addRecEvent,
     feedbackFor,
     setFeedbackFor,
+    logFor,
+    setLogFor,
     reloadAll,
     reloadCollections,
     updateGame,

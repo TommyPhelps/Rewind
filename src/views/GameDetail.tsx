@@ -23,7 +23,7 @@ import { REASONS } from "../rec/taste.ts";
 import { SCALES } from "../lib/types.ts";
 
 export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
-  const { games, gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections, profile, recEvents } = useApp();
+  const { games, gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections, profile, recEvents, setLogFor } = useApp();
   const { taste, series } = useTaste();
   const g = gameById.get(id);
   const [width, setWidth] = useState(settings.detailWidth);
@@ -65,6 +65,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
   if (!g) return null;
   const set = (patch: Parameters<typeof updateGame>[1]) => void updateGame(g.id, patch);
   const inCols = new Set(collections.filter((c) => c.gameIds.includes(g.id)).map((c) => c.id));
+  const upNext = collections.find((c) => c.name.toLowerCase() === "up next") ?? null;
 
   return (
     <aside className="detail" style={{ width: `min(${width}px, 46vw)` }} aria-label={`Details for ${cleanTitle(g.title)}`}>
@@ -85,7 +86,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
         aria-orientation="vertical"
       />
       <div className="titlebar" style={{ minHeight: "2.4rem", padding: "0 0.4rem 0 0.85rem" }}>
-        <span className="mono dim" style={{ fontSize: "0.74rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Game details</span>
+        <span className="mono dim" style={{ fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Game details</span>
         <div className="right">
           <button className="btn ghost icon sm" onClick={onClose} aria-label="Close details (Esc)" title="Close (Esc)">
             <Icon name="x" />
@@ -109,6 +110,47 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="quick" role="group" aria-label="Quick actions">
+          {g.status !== "playing" && (
+            <button className="btn sm primary" onClick={() => set({ status: "playing" })}>
+              <Icon name="play" /> {g.status === "paused" ? "Resume" : "Start playing"}
+            </button>
+          )}
+          {g.status === "playing" && (
+            <button className="btn sm" onClick={() => set({ status: "paused" })}>
+              <Icon name="pause" /> Pause
+            </button>
+          )}
+          {(g.status === "playing" || g.status === "paused" || g.status === "replay") && (
+            <button className="btn sm" onClick={() => set({ status: "completed" })}>
+              <Icon name="check" /> Completed
+            </button>
+          )}
+          <button className="btn sm" onClick={() => setLogFor({ gameId: g.id })}>Log session</button>
+          {upNext &&
+            (upNext.gameIds.includes(g.id) ? (
+              <button
+                className="btn sm ghost"
+                onClick={async () => {
+                  await run(() => repo.removeFromCollection(upNext.id, [g.id]), "Removed from Up Next.");
+                  await reloadCollections();
+                }}
+              >
+                Up Next #{upNext.gameIds.indexOf(g.id) + 1} ✕
+              </button>
+            ) : (
+              <button
+                className="btn sm ghost"
+                onClick={async () => {
+                  await run(() => repo.addToCollection(upNext.id, [g.id]), "Added to the end of Up Next.");
+                  await reloadCollections();
+                }}
+              >
+                <Icon name="plus" /> Up Next
+              </button>
+            ))}
         </div>
 
         <WhySection gameId={id} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={settings.useUnverifiedLengths} />
@@ -156,7 +198,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                 <CommitInput value={g.storefront ?? ""} placeholder="unknown" onCommit={(v) => set({ storefront: v.trim() || null })} />
               </label>
               <label className="lbl" style={{ gridColumn: "1 / -1" }}>
-                In Pick for me
+                Suggest in Pick for me
                 <select className="select" value={g.recPref} onChange={(e) => set({ recPref: e.target.value as Game["recPref"] })}>
                   {REC_PREFS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
@@ -168,7 +210,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
         <details className="sec" open>
           <summary>
             Length
-            <span className="right dim mono" style={{ fontSize: "0.7rem" }}>your value wins</span>
+            <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>your value wins</span>
           </summary>
           <div className="body">
             {LENGTH_KINDS.map((k) => {
@@ -182,7 +224,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                     {eff ? (
                       <>
                         {fmtHours(eff.hours)} <SourceBadge source={eff.source} />
-                        {mine && other.length > 0 && <span className="dim" style={{ fontSize: "0.75rem" }}> (est. {fmtHours(other[0].hours)})</span>}
+                        {mine && other.length > 0 && <span className="dim" style={{ fontSize: "var(--fs-xs)" }}> (est. {fmtHours(other[0].hours)})</span>}
                       </>
                     ) : (
                       <span className="dim">unknown</span>
@@ -219,7 +261,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
               </select>
             </div>
             {g.lengths.some((l) => l.source === "legacy_table" || l.source === "ai_estimate") && (
-              <div className="dim" style={{ fontSize: "0.8rem" }}>
+              <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
                 <span className="badge est">est.</span> = carried over from the old REWIND table; never verified. Type your own hours to override.
               </div>
             )}
@@ -240,7 +282,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
           <summary>Tags</summary>
           <div className="body">
             <div className="chips">
-              {g.tags.length === 0 && <span className="dim" style={{ fontSize: "0.85rem" }}>No tags yet.</span>}
+              {g.tags.length === 0 && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>No tags yet.</span>}
               {g.tags.map((t) => (
                 <span key={t.tag} className={"chip" + (t.source === "user" ? " user" : "")} title={t.source === "user" ? "Your tag" : SOURCE_LABEL[t.source === "legacy" ? "legacy_table" : t.source] ?? t.source}>
                   {t.tag}
@@ -267,18 +309,18 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
 
         <details className="sec">
           <summary>
-            Traits <span className="right dim mono" style={{ fontSize: "0.7rem" }}>inferred from tags</span>
+            Traits <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>inferred from tags</span>
           </summary>
           <div className="body">
             <TraitBars values={taste.traits.get(g.id)?.values} />
-            <div className="dim" style={{ fontSize: "0.8rem" }}>
+            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
               Worked out from the tags above, so they're only as accurate as the tags. Add tags like <span className="mono">guided</span>,{" "}
               <span className="mono">aimless</span>, <span className="mono">grind</span>, <span className="mono">punishing</span>, <span className="mono">gentle</span>,{" "}
               <span className="mono">dialogue</span>, <span className="mono">setup</span>, <span className="mono">quicksession</span> or <span className="mono">tense</span> to correct them.
             </div>
             {recEvents.some((e) => e.gameId === g.id && (e.kind === "pass" || e.kind === "drop")) && (
-              <div style={{ fontSize: "0.82rem" }}>
-                <div className="mono dim" style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.1em" }}>Your passes and drop reasons</div>
+              <div style={{ fontSize: "var(--fs-s)" }}>
+                <div className="mono dim" style={{ fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Your passes and drop reasons</div>
                 {recEvents
                   .filter((e) => e.gameId === g.id && (e.kind === "pass" || e.kind === "drop"))
                   .slice(-6)
@@ -298,7 +340,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
             Collections <span className="right dim num">{inCols.size}</span>
           </summary>
           <div className="body">
-            {collections.length === 0 && <span className="dim" style={{ fontSize: "0.85rem" }}>No collections yet. Create one in Collections.</span>}
+            {collections.length === 0 && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>No collections yet. Create one in Collections.</span>}
             {collections.map((c) => (
               <label key={c.id} className="check">
                 <input
@@ -326,7 +368,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
               <dt>Imported playtime</dt>
               <dd className="num">
                 {fmtPlaytime(g.importedPlaytimeMin)}{" "}
-                {g.playtimeSource && <span className="dim" style={{ fontSize: "0.78rem" }}>({SOURCE_LABEL[g.playtimeSource] ?? g.playtimeSource})</span>}
+                {g.playtimeSource && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>({SOURCE_LABEL[g.playtimeSource] ?? g.playtimeSource})</span>}
               </dd>
               <dt>Completed</dt>
               <dd>
@@ -339,7 +381,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
               <dt>Added</dt>
               <dd className="num">{fmtDate(g.createdAt)}</dd>
             </dl>
-            <div className="dim" style={{ fontSize: "0.8rem" }}>
+            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
               Imported playtime is shown as-is and is never treated as proof you enjoyed a game. Session tracking arrives in Phase 2.
             </div>
           </div>
@@ -371,7 +413,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
                 Steam store page ↗
               </button>
             )}
-            <div className="dim" style={{ fontSize: "0.8rem" }}>Cover art, descriptions and Steam matching arrive in Phase 3. Until then nothing here is filled in automatically.</div>
+            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>Cover art, descriptions and Steam matching arrive in Phase 3. Until then nothing here is filled in automatically.</div>
           </div>
         </details>
 
@@ -381,7 +423,7 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
           </summary>
           <div className="body">
             {events.length === 0 ? (
-              <span className="dim" style={{ fontSize: "0.85rem" }}>No recorded changes yet.</span>
+              <span className="dim" style={{ fontSize: "var(--fs-s)" }}>No recorded changes yet.</span>
             ) : (
               <div className="eventlog inset">
                 {events.map((e) => (
@@ -463,7 +505,7 @@ function NotesEditor({ game, onSave }: { game: Game; onSave(n: string): void }) 
           }
         }}
       />
-      <span className="dim mono" style={{ fontSize: "0.7rem" }}>{dirty ? "saving…" : "saved"}</span>
+      <span className="dim mono" style={{ fontSize: "var(--fs-xs)" }}>{dirty ? "saving…" : "saved"}</span>
     </>
   );
 }
@@ -482,6 +524,10 @@ export function describeEvent(e: EventRow, title?: string): string {
       return `Imported from ${String(e.data.from)}: ${e.data.added} added, ${e.data.merged} merged, ${e.data.skipped} skipped`;
     case "restore":
       return `Backup restored (${String(e.data.mode)})`;
+    case "session": {
+      const m = e.data.minutes == null ? null : Number(e.data.minutes);
+      return `${t}played${m ? ` for ${m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`}` : ""} (logged for ${String(e.data.date)})`;
+    }
     case "legacy_log":
       return `[old REWIND] ${String(e.data.text).replace(/[™®]/g, "")}`;
     default:
@@ -512,9 +558,9 @@ function WhySection({
     <details className="sec" open>
       <summary>
         Why REWIND would suggest it
-        <span className="right">{rec ? <span className={"band b-" + rec.band}>{BAND_LABEL[rec.band]}</span> : <span className="dim mono" style={{ fontSize: "0.7rem" }}>not suggested</span>}</span>
+        <span className="right">{rec ? <span className={"band b-" + rec.band}>{BAND_LABEL[rec.band]}</span> : <span className="dim mono" style={{ fontSize: "var(--fs-xs)" }}>not suggested</span>}</span>
       </summary>
-      <div className="body" style={{ fontSize: "0.86rem" }}>
+      <div className="body" style={{ fontSize: "var(--fs-s)" }}>
         {!rec ? (
           <div className="dim">
             Left out of suggestions:{" "}
@@ -542,7 +588,7 @@ function WhySection({
                 {rec.cons.map((p) => <li key={p.text}>{p.text}</li>)}
               </ul>
             )}
-            <div className="mono dim" style={{ fontSize: "0.72rem" }}>
+            <div className="mono dim" style={{ fontSize: "var(--fs-xs)" }}>
               {rec.confidence.level} confidence · {rec.sources.join(" · ")}
             </div>
           </>
@@ -555,7 +601,7 @@ function WhySection({
 function TraitBars({ values }: { values: Record<string, number | null> | undefined }) {
   if (!values) return null;
   const known = TRAITS.filter((t) => values[t] != null);
-  if (!known.length) return <div className="dim" style={{ fontSize: "0.85rem" }}>No tags yet, so no traits.</div>;
+  if (!known.length) return <div className="dim" style={{ fontSize: "var(--fs-s)" }}>No tags yet, so no traits.</div>;
   return (
     <div className="traitbars">
       {known.map((t) => (

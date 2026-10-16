@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useApp } from "../state/store.tsx";
 import type { Nav } from "../App.tsx";
 import { Icon } from "../ui/Icon.tsx";
-import { THEMES, type GamingProfile } from "../lib/types.ts";
+import { DENSITIES, THEMES, type GamingProfile } from "../lib/types.ts";
 import { DEFAULT_PROFILE } from "../data/profileDefaults.ts";
 import { backupFileName, createBackup } from "../backup/backup.ts";
 import { pickJsonFile, saveJsonFile } from "../platform/native.ts";
@@ -34,8 +34,8 @@ export function SettingsView({ nav }: { nav: Nav }) {
 
   return (
     <div className="content pad">
-      <div className="stack" style={{ maxWidth: "62rem" }}>
-        <div className="panel">
+      <div className="dash">
+        <div className="panel span2">
           <div className="hd">Appearance</div>
           <div className="bd" style={{ display: "grid", gap: "0.9rem" }}>
             <div className="themes" role="radiogroup" aria-label="Theme">
@@ -54,54 +54,34 @@ export function SettingsView({ nav }: { nav: Nav }) {
               ))}
             </div>
             <div className="row">
-              <span className="mono dim" style={{ fontSize: "0.8rem", width: "8rem" }}>Text size</span>
+              <span className="mono dim" style={{ fontSize: "var(--fs-s)", width: "8rem" }}>Text size</span>
               <div className="seg" role="group" aria-label="Text size">
-                {[0.9, 1, 1.1, 1.2, 1.3].map((s) => (
+                {[0.9, 1, 1.1, 1.2, 1.3, 1.5].map((s) => (
                   <button key={s} aria-pressed={settings.uiScale === s} onClick={() => setSettings({ uiScale: s })}>
                     {Math.round(s * 100)}%
                   </button>
                 ))}
               </div>
-              <span className="dim" style={{ fontSize: "0.82rem" }}>On top of Windows display scaling.</span>
+              <span className="dim" style={{ fontSize: "var(--fs-s)" }}>On top of Windows display scaling.</span>
             </div>
             <div className="row">
-              <span className="mono dim" style={{ fontSize: "0.8rem", width: "8rem" }}>Sidebar</span>
+              <span className="mono dim" style={{ fontSize: "var(--fs-s)", width: "8rem" }}>Density</span>
+              <div className="seg" role="radiogroup" aria-label="Density">
+                {DENSITIES.map((d) => (
+                  <button key={d.id} role="radio" aria-checked={settings.density === d.id} aria-pressed={settings.density === d.id} onClick={() => setSettings({ density: d.id })} title={d.note}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+              <span className="dim" style={{ fontSize: "var(--fs-s)" }}>{DENSITIES.find((d) => d.id === settings.density)?.note}: row height, spacing and control size.</span>
+            </div>
+            <div className="row">
+              <span className="mono dim" style={{ fontSize: "var(--fs-s)", width: "8rem" }}>Sidebar</span>
               <label className="check">
                 <input type="checkbox" checked={settings.sidebarCollapsed} onChange={(e) => setSettings({ sidebarCollapsed: e.target.checked })} />
                 Collapsed <span className="kbd">Ctrl+B</span>
               </label>
             </div>
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="hd">
-            Gaming profile
-            <span className="right">
-              <button
-                className="btn sm"
-                onClick={async () => {
-                  if (await confirm({ title: "Reset profile", body: "Put the profile back to the starting list from your brief?", ok: "Reset" })) void setProfile(DEFAULT_PROFILE);
-                }}
-              >
-                Reset to defaults
-              </button>
-            </span>
-          </div>
-          <div className="bd" style={{ display: "grid", gap: "1rem" }}>
-            <div className="dim" style={{ fontSize: "0.88rem" }}>
-              A starting point, not a rule. Pick for me (Phase 2) reads this, and you can change any of it whenever your tastes change.
-            </div>
-            <div className="grid2">
-              <ListEditor title="Games I've enjoyed" items={profile.enjoyed} onChange={(l) => setList("enjoyed", l)} />
-              <ListEditor title="Struggled to stay interested in" items={profile.struggled} onChange={(l) => setList("struggled", l)} />
-              <ListEditor title="I value" items={profile.values} onChange={(l) => setList("values", l)} />
-              <ListEditor title="I often dislike" items={profile.dislikes} onChange={(l) => setList("dislikes", l)} />
-            </div>
-            <label className="check">
-              <input type="checkbox" checked={profile.excludeMultiplayerDependent} onChange={(e) => void setProfile({ ...profile, excludeMultiplayerDependent: e.target.checked })} />
-              Don't suggest games that need other players
-            </label>
           </div>
         </div>
 
@@ -112,7 +92,7 @@ export function SettingsView({ nav }: { nav: Nav }) {
               <input type="checkbox" checked={settings.useUnverifiedLengths} onChange={(e) => setSettings({ useUnverifiedLengths: e.target.checked })} />
               Show the old REWIND table's length estimates (marked <span className="badge est">est.</span>) when I haven't entered my own
             </label>
-            <div className="dim" style={{ fontSize: "0.85rem" }}>
+            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
               Turn this off to see only lengths you've confirmed. The estimates stay stored either way.
             </div>
           </div>
@@ -128,7 +108,7 @@ export function SettingsView({ nav }: { nav: Nav }) {
               <button className="btn" onClick={importFile}>
                 <Icon name="upload" /> Import / restore…
               </button>
-              <span className="dim" style={{ fontSize: "0.85rem" }}>
+              <span className="dim" style={{ fontSize: "var(--fs-s)" }}>
                 Restore accepts REWIND 2 backups and the old artifact's backup. You always get a preview first.
               </span>
             </div>
@@ -136,12 +116,43 @@ export function SettingsView({ nav }: { nav: Nav }) {
               <dt>Games</dt>
               <dd className="num">{games.length}</dd>
               <dt>Database</dt>
-              <dd className="mono" style={{ fontSize: "0.8rem" }}>{info?.dbPath}</dd>
+              <dd className="mono" style={{ fontSize: "var(--fs-s)" }}>{info?.dbPath}</dd>
               <dt>Safety snapshots</dt>
-              <dd className="mono" style={{ fontSize: "0.8rem" }}>{info?.backupsDir} <span className="dim">(newest 20, saved before every import or restore)</span></dd>
+              <dd className="mono" style={{ fontSize: "var(--fs-s)" }}>{info?.backupsDir} <span className="dim">(newest 20, saved before every import or restore)</span></dd>
               <dt>Schema</dt>
               <dd className="num">v{SCHEMA_VERSION}</dd>
             </dl>
+          </div>
+        </div>
+
+        <div className="panel full">
+          <div className="hd">
+            Gaming profile
+            <span className="right">
+              <button
+                className="btn sm"
+                onClick={async () => {
+                  if (await confirm({ title: "Reset profile", body: "Put the profile back to the starting list from your brief?", ok: "Reset" })) void setProfile(DEFAULT_PROFILE);
+                }}
+              >
+                Reset to defaults
+              </button>
+            </span>
+          </div>
+          <div className="bd" style={{ display: "grid", gap: "1rem" }}>
+            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
+              A starting point, not a rule. Pick for me reads this, and you can change any of it whenever your tastes change.
+            </div>
+            <div className="grid2">
+              <ListEditor title="Games I've enjoyed" items={profile.enjoyed} onChange={(l) => setList("enjoyed", l)} />
+              <ListEditor title="Struggled to stay interested in" items={profile.struggled} onChange={(l) => setList("struggled", l)} />
+              <ListEditor title="I value" items={profile.values} onChange={(l) => setList("values", l)} />
+              <ListEditor title="I often dislike" items={profile.dislikes} onChange={(l) => setList("dislikes", l)} />
+            </div>
+            <label className="check">
+              <input type="checkbox" checked={profile.excludeMultiplayerDependent} onChange={(e) => void setProfile({ ...profile, excludeMultiplayerDependent: e.target.checked })} />
+              Don't suggest games that need other players
+            </label>
           </div>
         </div>
 
@@ -163,7 +174,7 @@ export function SettingsView({ nav }: { nav: Nav }) {
 
         <div className="panel">
           <div className="hd">About &amp; privacy</div>
-          <div className="bd" style={{ display: "grid", gap: "0.4rem", fontSize: "0.9rem" }}>
+          <div className="bd" style={{ display: "grid", gap: "0.4rem", fontSize: "var(--fs-m)" }}>
             <div>REWIND {info?.version} — everything is stored in a SQLite file on this PC. No account, no telemetry, no ads, no tracking.</div>
             <div className="dim">
               The internet is only used when you open a store or HowLongToBeat link. Later phases add optional metadata and artwork lookups, which
@@ -190,7 +201,7 @@ function ListEditor({ title, items, onChange }: { title: string; items: string[]
             </button>
           </span>
         ))}
-        {items.length === 0 && <span className="dim" style={{ fontSize: "0.85rem" }}>Empty</span>}
+        {items.length === 0 && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>Empty</span>}
       </div>
       <form
         className="row"

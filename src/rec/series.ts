@@ -34,3 +34,16 @@ export function seriesNeighbours(g: Game, index: Map<string, SeriesInfo>, byId: 
   }
   return { previous: null };
 }
+
+/** The closest later entry of the same series that is in the library, if any. */
+export function seriesNext(g: Game, index: Map<string, SeriesInfo>, byCanon: Map<string, Game>): Game | null {
+  const info = index.get(g.canon);
+  if (!info) return null;
+  for (let p = info.position + 1; p < info.entries.length; p++) {
+    for (const k of info.entries[p]) {
+      const hit = byCanon.get(k);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}

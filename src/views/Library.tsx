@@ -19,6 +19,11 @@ import {
   type SortKey,
 } from "../lib/library.ts";
 import { OWNERSHIP, STATUSES, type Game, type Ownership, type Status } from "../lib/types.ts";
+import { PROGRESS_FILTERS, SORTS } from "../lib/library.ts";
+import { findUpNext } from "../lib/queues.ts";
+import { progressRatio, progressText } from "../rec/progress.ts";
+import { useTaste } from "../state/recs.ts";
+import { DEFAULT_WEIGHTS, EMPTY_SESSION, recommend } from "../rec/engine.ts";
 
 interface LibUi {
   filters: LibraryFilters;
@@ -35,16 +40,17 @@ export function LibraryView({
   nav,
   selectedId,
   onSelect,
-  pendingQuery,
-  clearPendingQuery,
+  pendingFilters,
+  clearPending,
 }: {
   nav: Nav;
   selectedId: string | null;
   onSelect(id: string | null): void;
-  pendingQuery: string | null;
-  clearPendingQuery(): void;
+  pendingFilters: Partial<LibraryFilters> | null;
+  clearPending(): void;
 }) {
-  const { games, settings, setSettings, collections, repo, updateGame, bulkUpdate, run, confirm, reloadAll, reloadCollections, toast } = useApp();
+  const { games, settings, setSettings, collections, repo, updateGame, bulkUpdate, run, confirm, reloadAll, reloadCollections, toast, profile, recEvents } = useApp();
+  const { taste, series } = useTaste();
   const allowEst = settings.useUnverifiedLengths;
   const [ui, setUi] = useState<LibUi>(memo ?? { filters: DEFAULT_FILTERS, sort: "title", dir: 1 });
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedId ? [selectedId] : []));
@@ -68,11 +74,11 @@ export function LibraryView({
     return () => window.clearTimeout(t);
   }, [ui, repo]);
   useEffect(() => {
-    if (pendingQuery != null) {
-      setUi((u) => ({ ...u, filters: { ...DEFAULT_FILTERS, query: pendingQuery } }));
-      clearPendingQuery();
+    if (pendingFilters != null) {
+      setUi((u) => ({ ...u, filters: { ...DEFAULT_FILTERS, ...pendingFilters } }));
+      clearPending();
     }
-  }, [pendingQuery, clearPendingQuery]);
+  }, [pendingFilters, clearPending]);
 
   const setF = (patch: Partial<LibraryFilters>) => setUi((u) => ({ ...u, filters: { ...u.filters, ...patch } }));
   const f = ui.filters;
@@ -83,10 +89,32 @@ export function LibraryView({
     return c ? new Set(c.gameIds) : undefined;
   }, [f.collectionId, collections]);
 
+  // "Pick-for-me fit" sort uses the same engine with no session settings.
+  const fit = useMemo(() => {
+    if (ui.sort !== "fit") return undefined;
+    const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified: allowEst });
+    return new Map(r.results.map((x) => [x.game.id, x.score]));
+  }, [ui.sort, games, taste, recEvents, profile, series, allowEst]);
   const rows = useMemo(
-    () => sortGames(filterGames(games, f, allowEst, members), ui.sort, ui.dir, allowEst),
-    [games, f, allowEst, members, ui.sort, ui.dir],
+    () => sortGames(filterGames(games, f, allowEst, members), ui.sort, ui.dir, allowEst, fit),
+    [games, f, allowEst, members, ui.sort, ui.dir, fit],
   );
+  const upNextPos = useMemo(() => {
+    const u = findUpNext(collections);
+    return new Map((u?.gameIds ?? []).map((id, i) => [id, i + 1]));
+  }, [collections]);
+  const subline = (g: Game): string => {
+    const bits: string[] = [];
+    const n = upNextPos.get(g.id);
+    if (n) bits.push(`Up Next #${n}`);
+    const p = progressRatio(g, allowEst);
+    if (g.status === "completed") bits.push(g.dateCompleted ? `finished ${g.dateCompleted}` : "finished");
+    else if (p.hours >= 1) bits.push(progressText(g, allowEst));
+    else bits.push("not started");
+    if (g.lastPlayed) bits.push(`last played ${g.lastPlayed}`);
+    if (!g.tags.length) bits.push("no info yet");
+    return bits.join(" · ");
+  };
   const counts = useMemo(() => {
     const m = new Map<string, number>();
     for (const g of games) m.set(g.status, (m.get(g.status) ?? 0) + 1);
@@ -103,15 +131,16 @@ export function LibraryView({
     });
   }, [games]);
 
-  const remPx = useRemPx(settings.uiScale);
+  const remPx = useRemPx(`${settings.uiScale}|${settings.density}`);
   const vp = useViewport(listRef);
   const grid = settings.libraryView === "grid";
   // Narrow windows (or a wide details panel) drop the rating and tag columns.
   const compact = vp.width < 50 * remPx;
   const COLS = compact ? COLS_COMPACT : COLS_FULL;
-  const rowH = Math.round(2.2 * remPx);
-  const headH = Math.round(1.9 * remPx);
-  const tileW = Math.round(9.6 * remPx);
+  const twoLine = settings.density !== "compact";
+  const rowH = Math.round((settings.density === "compact" ? 2.25 : settings.density === "spacious" ? 3.5 : 3.1) * remPx);
+  const headH = Math.round(2.2 * remPx);
+  const tileW = Math.round(11.5 * remPx);
   const gap = Math.round(0.85 * remPx);
   const perRow = Math.max(1, Math.floor((vp.width - 2 * gap + gap) / (tileW + gap)));
   const tileH = Math.round(((vp.width - 2 * gap - (perRow - 1) * gap) / perRow) * 1.5 + 2.9 * remPx + gap);
@@ -281,6 +310,11 @@ export function LibraryView({
             <option key={o.id} value={o.id}>{o.label}</option>
           ))}
         </select>
+        <select className="select" value={f.progress} onChange={(e) => setF({ progress: e.target.value as LibraryFilters["progress"] })} aria-label="Progress">
+          {PROGRESS_FILTERS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
         <select className="select" value={f.tag} onChange={(e) => setF({ tag: e.target.value })} aria-label="Tag" style={{ maxWidth: "11rem" }}>
           <option value="">Any tag</option>
           {tags.map((t) => (
@@ -299,6 +333,29 @@ export function LibraryView({
         <button className="btn sm" aria-pressed={f.hideMultiplayer} onClick={() => setF({ hideMultiplayer: !f.hideMultiplayer })} title="Hide games that need other players">
           solo only
         </button>
+        <button className="btn sm" aria-pressed={f.needsInfo} onClick={() => setF({ needsInfo: !f.needsInfo })} title="Games with no tags or no length yet">
+          needs info
+        </button>
+        <span className="divider" />
+        <label className="row" style={{ gap: 4 }}>
+          <span className="mono dim" style={{ fontSize: "var(--fs-xs)" }}>Sort</span>
+          <select
+            className="select"
+            value={ui.sort}
+            aria-label="Sort by"
+            onChange={(e) => {
+              const k = e.target.value as SortKey;
+              setUi((u) => ({ ...u, sort: k, dir: SORTS.find((x) => x.id === k)!.dir }));
+            }}
+          >
+            {SORTS.map((x) => (
+              <option key={x.id} value={x.id}>{x.label}</option>
+            ))}
+          </select>
+          <button className="btn icon sm" onClick={() => setUi((u) => ({ ...u, dir: u.dir === 1 ? -1 : 1 }))} title={ui.dir === 1 ? "Ascending" : "Descending"} aria-label="Reverse sort order">
+            <Icon name={ui.dir === 1 ? "up" : "down"} />
+          </button>
+        </label>
         {filtersActive && (
           <button className="btn sm ghost" onClick={() => setUi((u) => ({ ...u, filters: DEFAULT_FILTERS }))}>
             clear
@@ -460,7 +517,10 @@ export function LibraryView({
                       <Icon name="star" />
                     </button>
                   </div>
-                  <div className="title" title={g.title}>{cleanTitle(g.title)}</div>
+                  <div className="title" title={g.title}>
+                    <span className="tt">{cleanTitle(g.title)}</span>
+                    {twoLine && <span className="sub">{subline(g)}</span>}
+                  </div>
                   <div><StatusPill status={g.status} /></div>
                   <div className="r num">
                     {g.endless ? <Endless game={g} /> : len ? (
@@ -565,7 +625,7 @@ function AddGameDialog({ onClose, onAdded }: { onClose(): void; onAdded(g: Game)
           <input className="field" value={platform} onChange={(e) => setPlatform(e.target.value)} />
         </label>
       </div>
-      <p className="dim" style={{ margin: 0, fontSize: "0.85rem" }}>
+      <p className="dim" style={{ margin: 0, fontSize: "var(--fs-s)" }}>
         Length, tags and other details stay empty until you fill them in or a metadata source is connected (Phase 3). Nothing is guessed.
       </p>
     </Modal>

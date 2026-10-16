@@ -159,7 +159,7 @@ export function ImportFlow({ req, onClose, nav }: { req: ImportRequest; onClose(
       <Modal title="Import" onClose={onClose} footer={<button className="btn" onClick={onClose}>Close</button>}>
         <div className="note bad">{stage.msg}</div>
         {stage.details && (
-          <ul className="mono" style={{ margin: 0, fontSize: "0.8rem" }}>
+          <ul className="mono" style={{ margin: 0, fontSize: "var(--fs-s)" }}>
             {stage.details.slice(0, 15).map((d) => <li key={d}>{d}</li>)}
           </ul>
         )}
@@ -171,7 +171,7 @@ export function ImportFlow({ req, onClose, nav }: { req: ImportRequest; onClose(
       <Modal title="Import complete" onClose={close} footer={<button className="btn primary" onClick={close}>Open library</button>}>
         <div className="note ok">{stage.lines.map((l) => <div key={l}>{l}</div>)}</div>
         {stage.snapshot && (
-          <div className="dim" style={{ fontSize: "0.85rem" }}>
+          <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
             Your library from before the import was saved to <span className="mono">{stage.snapshot}</span>
           </div>
         )}
@@ -208,7 +208,7 @@ export function ImportFlow({ req, onClose, nav }: { req: ImportRequest; onClose(
         <div>
           <b>{p.matchingGames}</b> of the backup's games are already in your library{p.matchingGames ? " (matched by ID, Steam App ID or title)" : ""}; <b>{p.newGames}</b> are new.
           {p.matchingSamples.length > 0 && (
-            <div className="dim mono" style={{ fontSize: "0.78rem", marginTop: 4 }}>
+            <div className="dim mono" style={{ fontSize: "var(--fs-s)", marginTop: 4 }}>
               e.g. {p.matchingSamples.slice(0, 4).map((s) => `${cleanTitle(s.incoming)} (${s.by})`).join(", ")}
             </div>
           )}
@@ -287,12 +287,12 @@ export function ImportFlow({ req, onClose, nav }: { req: ImportRequest; onClose(
           ))}
         </div>
       )}
-      <div className="dim" style={{ fontSize: "0.85rem" }}>
+      <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
         Lengths and tags from the old app's built-in table are imported marked <span className="badge est">est.</span> (unverified). Your own values always win.
         The old penalty and award systems are not carried over.
       </div>
       <details>
-        <summary className="mono dim" style={{ cursor: "pointer", fontSize: "0.8rem" }}>Show games ({plan.games.length})</summary>
+        <summary className="mono dim" style={{ cursor: "pointer", fontSize: "var(--fs-s)" }}>Show games ({plan.games.length})</summary>
         <table className="t" style={{ marginTop: 6 }}>
           <thead><tr><th>Title</th><th>Status</th><th className="n">Played</th><th>Action</th></tr></thead>
           <tbody>

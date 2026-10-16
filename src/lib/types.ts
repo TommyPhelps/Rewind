@@ -161,9 +161,17 @@ export interface GamingProfile {
   excludeMultiplayerDependent: boolean;
 }
 
+export type Density = "compact" | "comfortable" | "spacious";
+export const DENSITIES: { id: Density; label: string; note: string }[] = [
+  { id: "compact", label: "Compact", note: "More rows on screen" },
+  { id: "comfortable", label: "Comfortable", note: "Default" },
+  { id: "spacious", label: "Spacious", note: "Bigger text and targets" },
+];
+
 export interface AppSettings {
   theme: ThemeId;
-  uiScale: number; // 0.9 - 1.3
+  density: Density;
+  uiScale: number; // 0.9 - 1.5
   sidebarCollapsed: boolean;
   libraryView: "table" | "grid";
   detailWidth: number;
@@ -173,6 +181,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: "midnight",
+  density: "comfortable",
   uiScale: 1,
   sidebarCollapsed: false,
   libraryView: "table",

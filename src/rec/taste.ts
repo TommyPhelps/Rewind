@@ -150,9 +150,8 @@ export function matchProfileTitle(entry: string, games: Game[]): Game | null {
 
 // ---------- the model ----------
 
-export function playtimeHours(g: Game): number {
-  return (g.importedPlaytimeMin ?? 0) / 60;
-}
+export { playtimeHours } from "./progress.ts";
+import { playtimeHours } from "./progress.ts";
 
 export function buildTaste(games: Game[], profile: GamingProfile, events: RecEvent[], now = new Date(), allowUnverified = true): TasteModel {
   const traits = new Map(games.map((g) => [g.id, deriveTraits(g, allowUnverified)]));
