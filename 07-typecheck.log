@@ -1,0 +1,4 @@
+
+> rewind@4.0.0 typecheck
+> tsc --noEmit
+
