@@ -69,6 +69,15 @@ jobs:
           set -o pipefail
           npm run build 2>&1 | tee "$LOGS/03-frontend.log"
 
+      - name: Add new Rust dependencies to Cargo.lock (existing versions stay pinned)
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          set -o pipefail
+          # 'cargo metadata' adds packages that Cargo.toml now needs and leaves every existing pin alone.
+          # The build below still runs with --locked, so nothing else can change silently.
+          cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 > /dev/null 2> "$LOGS/03b-cargo-lock.log" || { cat "$LOGS/03b-cargo-lock.log"; exit 1; }
+          git diff --stat -- src-tauri/Cargo.lock | tee -a "$LOGS/03b-cargo-lock.log"
+
       - name: Build Windows app + NSIS installer
         id: nsis
         if: always() && steps.install.outcome == 'success'
