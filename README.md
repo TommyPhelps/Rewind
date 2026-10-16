@@ -1,7 +1,7 @@
-# REWIND 3.0
+# REWIND 4.0
 
-A personal gaming companion for Windows 11: your game library, what you're playing next, and (in later
-phases) an explainable "what should I play tonight" picker, Minecraft modpack discovery and a modding
+A personal gaming companion for Windows 11: your game library, what you're playing next, an explainable
+"what should I play tonight" picker, personal Discover shelves, Minecraft modpack discovery and a modding
 companion. Dark early-2000s look, five themes, a sibling to Nook Tracker.
 
 Everything lives in one SQLite file on your PC. No account, no server, no telemetry. It works offline.
@@ -14,12 +14,9 @@ Everything lives in one SQLite file on your PC. No account, no server, no teleme
 | 1 | Tauri app, SQLite, dark Y2K design system, library import, navigation, Windows build | Built (v2.0.0) |
 | 2 | Recommendation engine: Pick for me, Friction Check, taste profile, presets | Built (v2.1.0) |
 | 2.5 | Desktop layouts, readability, Home dashboard, session intent, queues, Activity overview | Built (v2.5.0) |
-| 3 | Steam library import, game metadata, cover art, offline cache, metadata-aware recommendations | **Built (v3.0.0)** |
-| 4 | Minecraft modpack discovery, modding companion, Discover, low-stimulation mode | Planned |
-| 5 | Backup completion, performance, polish | Planned |
-
-Screens for later phases are shown in the sidebar with a `P4` tag and open a placeholder that
-says what's coming. Nothing in them is simulated.
+| 3 | Steam library import, game metadata, cover art, offline cache, metadata-aware recommendations | Built (v3.0.0) |
+| 4 | Discover, Minecraft modpack discovery and comparison, modding companion | **Built (v4.0.0)** |
+| 5 | Low-stimulation mode, series navigator, performance, final polish | Planned |
 
 ### What Phase 1 does
 
@@ -173,6 +170,64 @@ and keyless but not formally documented by Valve, so they could change; `tools/p
 "Steam endpoint probe") re-checks them. HowLongToBeat has no public API, so REWIND only links to it.
 "Steam client on this PC" can't see owned games that were never installed or launched.
 
+### What Phase 4 adds: Discover, modpacks, modding companion
+
+**Discover** (Ctrl+3) replaces the placeholder with personal shelves: *Like your favourites*, *Forgotten
+gems in your library*, *Finish what you started*, *Deep RPG adventures*, *Early-2000s nostalgia*, *Short and
+unforgettable*, *Games worth mastering*, *Cozy but purposeful*, *Games that respect your time*, *Strong
+atmosphere* and *Something completely different*. Each shelf says exactly what qualifies a game ("How this
+works"), and every suggestion uses the same explainable scoring as Pick for me: why it fits, why it might
+not, commitment, confidence and data sources. Popularity and review scores are never used or shown.
+Discover settings (saved in the database and in backups) set the shelf order and visibility, how much room
+games you don't own get, your nostalgia years and platforms, what "short" and "deep" mean, and how long
+"Not interested" hides something.
+
+**Beyond your library** uses IGDB (the same free Twitch keys as metadata) and only when you press the
+button: IGDB's own "similar games" lists for your favourites, games from your nostalgia years on PC / PS2 /
+PS3 (your choice), role-playing games, and games with a short player-submitted time to beat. IGDB is asked
+for games with enough player ratings to be judged, but ratings are never fetched or shown; candidates are
+ranked by your taste. Games already in your library (matched by Steam app id, linked IGDB id or exact title)
+are never shown as "not owned"; adult-themed games are excluded. Results are cached for offline use. Prices
+are not shown, because REWIND doesn't track them; store pages open in your browser.
+
+**Your answers**: Interested, Want to try, Wishlisted, Already played, Not interested (keys I T W P N; press
+again to clear). They never change your library: nothing is added unless you press *Add to library…*, and
+"Already played" doesn't change a status. *Not interested* hides an item for 90 days (180 if you say it
+again, up to a year), then it comes back; on a library game it also counts as a fading pass in Pick for me.
+*Want to try* lifts a game in Pick for me. Saved games you don't own keep a snapshot (and cached cover) so
+the wishlist works offline.
+
+**Mods & Modpacks** (Ctrl+5):
+- *Modpacks*: Modrinth's public API (no key; REWIND stays far under its 300 requests/minute limit) and,
+  optionally, CurseForge's official API with your own key. Suggested packs are Modrinth's most-downloaded
+  packs in the styles you like, re-ranked by fit for you (downloads decide what's considered, never the
+  order). Every fact is labelled: *verified* (numbers, dates, versions, and the list of Modrinth-hosted mods
+  inside the pack), *the author says* (their tags and description), or *REWIND's estimate*. A pack "has a quest
+  book" only if a quest mod is in its mod list; otherwise it's "the author says" or "none found". Quest
+  quality is never rated. Labels like Beginner-friendly, Expert, Hardcore, Technical, Magical, Exploration,
+  Cozy, Kitchen sink, Lightweight and Shaders each show their evidence. Maintenance comes from release dates
+  (stale and archived packs are flagged), and packs that disappear keep their saved copy marked unavailable.
+- *What I want in a pack*: sliders for quest books, guidance, exploration, cozy building, tech, magic,
+  shaders, performance, kitchen sinks, expert and hardcore, maintenance and (capped) popularity, plus a
+  preferred Minecraft version and loader. A kitchen sink with no quest book counts as "may feel aimless".
+- *Compare*: up to four packs side by side (progression, quest book, quest quality, difficulty, complexity,
+  performance, mod count, maintenance, shaders, official page) with a short verdict on which fits you best.
+- *Your old list*: the 36 packs from the old app, matched to Modrinth by exact name only.
+- *Modding companion*: profiles for Skyrim (SE/AE and 2011), Oblivion, Oblivion Remastered, Morrowind, Mount &
+  Blade: Warband, Fallout 3 / New Vegas / 4, Minecraft or any game: mod lists (add, edit, reorder, enable,
+  paste or open MO2 `modlist.txt`, `plugins.txt` or link lists — files are only read), export as Markdown,
+  compatibility and setup notes (your notes, with an optional source link; REWIND makes no compatibility
+  claims), backup checklists with general safe steps, modded playthroughs, the mod manager you use, and
+  links to official mod sites and tools. A modpack can become a profile with its mod list. A game's page
+  shows its profiles. REWIND never touches game folders or mod-manager files.
+
+**Keys and hosts:** the Rust allow-list now also includes `api.modrinth.com`, `cdn.modrinth.com`,
+`api.curseforge.com` and `media.forgecdn.net`. The CurseForge key is stored like the others: on this PC
+only, never in backups. FTB-app-only packs aren't covered (no documented public API).
+
+**Database:** schema 4 adds `discover_marks`, `mod_profiles`, `mod_entries`, `mod_notes`, `mod_checklist` and
+`mod_runs`. All are in backups; older backups still restore, and merge keeps your newer answers.
+
 ### What happened to the old app's data
 
 | Old artifact | REWIND 2 |
@@ -223,9 +278,9 @@ The installer is compiled on a free GitHub-hosted Windows machine. Nothing needs
 1. The project lives in a private GitHub repository.
 2. Every push to `main` starts **Actions → Windows build** (or press *Run workflow*). The first run takes
    roughly 15–25 minutes; later runs are faster because the Rust build is cached.
-3. When the run shows a green check, open it and download **REWIND-2.0.0-windows-x64** (a zip with the
+3. When the run shows a green check, open it and download **REWIND-4.0.0-windows-x64** (a zip with the
    setup `.exe`, the `.msi`, a portable `.exe` and `SHA256SUMS.txt`).
-4. Optional: push a tag like `v2.0.0` and the workflow also publishes a **Release** with the files attached.
+4. Optional: push a tag like `v4.0.0` and the workflow also publishes a **Release** with the files attached.
 
 What the workflow does on its own:
 - **Lockfiles**: the first successful install commits `package-lock.json` and `src-tauri/Cargo.lock` back
@@ -262,15 +317,30 @@ src/
   views/ ui/    screens and components
   styles/       themes.css (5 skins as CSS variables), app.css
   meta/         Steam / IGDB clients, title matching, Steam import planner, metadata sync, VDF parser
+  discover/     Discover shelves, IGDB "beyond your library", answers (marks), settings
+  mods/         Modrinth + CurseForge clients, modpack evidence and fit, comparison, modding companion
 src-tauri/      Rust: rusqlite bridge with real transactions, file I/O for chosen files, safety snapshots,
                 HTTPS allow-list client + artwork cache (net.rs), Steam client file reader (steam_local.rs)
 tests/          node:test suites against node:sqlite (same SQL as the app)
-tools/          icon generator, browser preview build + dev SQL bridge (development only)
+tools/          icon generator, browser preview build + dev SQL bridge, endpoint probes (development only)
 ```
 
 ## Testing record
 
 Automated (run here and in CI):
+- 102 tests (101 run here; 1 needs the real export file). Phase 4 adds: every Discover shelf explaining
+  itself and using only your library without IGDB; short-game thresholds and no endless games; "Not
+  interested" hiding for 90 then 180 days and coming back with a note, and counting as a pass; answers never
+  changing your library; Want to try lifting a game in Pick for me; IGDB candidates with owned games
+  recognised by Steam id, adult themes filtered, no prices or scores in what's shown, scope settings; wrong
+  IGDB keys and offline giving clear messages; bad saved settings falling back; Modrinth search / details /
+  mod lists against response shapes recorded from the live API (`tools/probe-mods.mjs`), quest books only
+  claimed from the mod list, plain-text descriptions (no HTML or scripts), unsafe links dropped, kitchen
+  sinks without quests, stale / archived packs, disclosures, downloads never beating fit; Modrinth 503,
+  offline, 404 and a 429 that waits as told; CurseForge without a key, with a wrong key and with a key
+  (invented fake), comparison rows and verdict; mod-list parsing for MO2, plugins.txt, links and plain
+  lines; presets; the whole modding profile lifecycle; the v3 → v4 upgrade keeping every game, note and key;
+  backups with answers and profiles (replace, merge, and older backups without the new sections).
 - 77 tests (76 run here; 1 needs the real export file). Phase 3 adds: VDF and Steam client file
   parsing, Steam store / search / owned-games / IGDB parsers against response shapes recorded from the
   live endpoints, title matching (editions match, sequels never do, ties go to review), the Steam import
@@ -306,9 +376,17 @@ Automated (run here and in CI):
   preview answers network calls from the invented fake services (images say "TEST ART"): import from
   "Steam on this PC" with your real 404-game export, sync details and covers, review queue, grid S/M/L,
   list thumbnails, details banner and About, offline sync and offline import, and the same screen sizes
-  and scaling with no overflow.
+  and scaling with no overflow. For 4.0, with your real 404-game export and the invented fake IGDB /
+  Modrinth / CurseForge: every Discover shelf, Look beyond my library, keyboard answers, Saved and Hidden,
+  Discover settings, suggested packs with mod-list checks, pack details, comparison, your old list, creating
+  a modding profile and pasting an MO2 list, at 2560×1440, 1920×1080, 2560×1440 at 150% and 200%, and
+  960×600; and offline (saved IGDB and Modrinth results shown with their date, a clear message where
+  nothing is saved). No console errors.
 
 Not yet verified (needs a Windows PC and the internet): the compiled installer itself, first launch under
 WebView2, native Open/Save dialogs, window-position memory across your two monitors, SmartScreen
 behaviour, real Steam / IGDB requests from the app (the endpoints themselves were checked from GitHub's
-servers), reading your real Steam folder, and cached covers loading through the asset protocol.
+servers), reading your real Steam folder, and cached covers loading through the asset protocol. For 4.0:
+real IGDB discovery queries (built from IGDB's documentation; CI has no Twitch keys), real CurseForge
+requests (needs a key; built from CurseForge's documentation), and Modrinth / IGDB images loading inside
+the app (the live Modrinth API itself was checked from GitHub's servers).

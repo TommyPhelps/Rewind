@@ -168,6 +168,8 @@ export function SettingsView({ nav }: { nav: Nav }) {
               <dt><span className="kbd">Delete</span></dt><dd>Remove selected games (asks first)</dd>
               <dt><span className="kbd">Esc</span></dt><dd>Close a dialog, menu or the details panel</dd>
               <dt>Right-click</dt><dd>Status, favorite, collections and remove for a game or selection</dd>
+              <dt><span className="kbd">← → ↑ ↓</span></dt><dd>Discover: move between suggestions</dd>
+              <dt><span className="kbd">I T W P N</span></dt><dd>Discover: Interested, Want to try, Wishlist, Already played, Not interested (press again to clear)</dd>
             </dl>
           </div>
         </div>
@@ -177,8 +179,9 @@ export function SettingsView({ nav }: { nav: Nav }) {
           <div className="bd" style={{ display: "grid", gap: "0.4rem", fontSize: "var(--fs-m)" }}>
             <div>REWIND {info?.version} — everything is stored in a SQLite file on this PC. No account, no telemetry, no ads, no tracking.</div>
             <div className="dim">
-              The internet is only used when you open a store or HowLongToBeat link. Later phases add optional metadata and artwork lookups, which
-              only send the specific game being looked up.
+              The internet is only used when you ask for it: a Steam import or details sync, Discover's “Look beyond my library” (IGDB), or the
+              Mods & Modpacks screens (Modrinth, and CurseForge if you add a key). Those only send what they need to look up — game titles, IDs or
+              search words — never your notes, ratings or library. Everything they return is cached so it works offline.
             </div>
           </div>
         </div>

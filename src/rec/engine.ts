@@ -188,6 +188,10 @@ export interface RecInput {
   series: Map<string, SeriesInfo>;
   allowUnverified: boolean;
   now?: Date;
+  /** Discover only: also score games outside your library (built from IGDB data). */
+  includeNotOwned?: boolean;
+  /** Your Discover answers for library games, by game id ("Want to try", "Already played"…). */
+  marks?: Map<string, { kind: string }>;
 }
 
 export const BAND_LABEL: Record<Rec["band"], string> = { excellent: "Excellent fit", good: "Good fit", fair: "Possible fit", weak: "Weak fit" };
@@ -314,7 +318,7 @@ export function recommend(input: RecInput): RecResult {
     if (g.status === "not_interested") { ex("Marked not interested"); continue; }
     if (g.recPref === "never") { ex("Set to never suggest"); continue; }
     if (solo && isGroupGame(g)) { ex("Need other players"); continue; }
-    if (g.ownership === "not_owned") { ex("Not owned"); continue; }
+    if (g.ownership === "not_owned" && !input.includeNotOwned) { ex("Not owned"); continue; }
     if (g.ownership === "wishlist" && !S.includeWishlist) { ex("Wishlist (not owned)"); continue; }
     const replayMood = S.intent === "replay" || S.experience === "nostalgic";
     if (g.status === "completed" && !replayMood) { ex("Finished (choose 'Replay something familiar' to include)"); continue; }
@@ -678,6 +682,12 @@ export function recommend(input: RecInput): RecResult {
     // Ownership and progress.
     if (g.ownership === "owned") add("ownership", 0.4, [{ text: "Already in your library", c: 0.15 }]);
     else if (g.ownership === "wishlist") add("ownership", -0.4, [{ text: "On your wishlist — you don't own it yet", c: -0.4 }]);
+    else if (g.ownership === "not_owned") add("ownership", -0.3, [{ text: "You don't own it", c: -0.3 }]);
+    // Your answers in Discover.
+    const mark = input.marks?.get(g.id)?.kind;
+    if (mark === "want") add("progress", 0.5, [{ text: "You marked it 'Want to try' in Discover", c: 0.5 }]);
+    else if (mark === "interested") add("progress", 0.3, [{ text: "You marked it 'Interested' in Discover", c: 0.3 }]);
+    else if (mark === "played" && !replayMood) add("history", -0.5, [{ text: "You said you've already played it", c: -0.5 }]);
     if (g.status === "playing") add("progress", S.intent === "continue" ? 1 : 0.7, [{ text: "You're currently playing it", c: 0.7 }]);
     else if (g.status === "paused") add("progress", 0.35, [{ text: "Paused — a chance to pick it back up", c: 0.35 }]);
     else if (g.status === "replay") add("progress", 0.3, [{ text: "Marked as a replay candidate", c: 0.3 }]);

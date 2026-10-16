@@ -6,7 +6,7 @@
 // (the UI also saves an automatic safety snapshot before either one).
 
 import type { Statement } from "../db/driver.ts";
-import { BACKUP_TABLES, SCHEMA_VERSION, type BackupTable } from "../db/schema.ts";
+import { BACKUP_TABLES, SCHEMA_VERSION, TABLE_SINCE, type BackupTable } from "../db/schema.ts";
 import { nowIso, type Repo } from "../db/repo.ts";
 import { canon } from "../lib/canon.ts";
 
@@ -57,6 +57,10 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   },
   game_lengths: { kind: ["main", "main_extras", "completionist"] },
   playthroughs: { outcome: ["in_progress", "paused", "completed", "dropped"] },
+  discover_marks: { kind: ["interested", "not_interested", "played", "want", "wishlist"] },
+  mod_profiles: { status: ["planning", "active", "paused", "finished", "retired"] },
+  mod_notes: { kind: ["compat", "setup", "issue", "tip"], status: ["open", "resolved"] },
+  mod_runs: { status: ["active", "paused", "finished", "abandoned"] },
 };
 
 const REQUIRED: Record<BackupTable, string[]> = {
@@ -71,6 +75,12 @@ const REQUIRED: Record<BackupTable, string[]> = {
   events: ["ts", "type"],
   settings: ["key", "value"],
   rec_events: ["ts", "kind"],
+  discover_marks: ["item_key", "kind", "title"],
+  mod_profiles: ["id", "name"],
+  mod_entries: ["id", "profile_id", "name"],
+  mod_notes: ["id", "profile_id"],
+  mod_checklist: ["id", "profile_id", "text"],
+  mod_runs: ["id", "profile_id"],
 };
 
 export type ValidationResult = { ok: true; backup: RewindBackup; warnings: string[] } | { ok: false; errors: string[] };
@@ -88,7 +98,7 @@ export function validateBackup(obj: unknown): ValidationResult {
   const data = b.data as Record<string, unknown>;
   for (const t of BACKUP_TABLES) {
     if (data[t] === undefined) {
-      const since = t === "game_meta" ? 3 : t === "rec_events" ? 2 : 1;
+      const since = TABLE_SINCE[t] ?? 1;
       if (typeof b.schemaVersion !== "number" || b.schemaVersion >= since) warnings.push(`No "${t}" section; treated as empty.`);
       data[t] = [];
     }
@@ -217,9 +227,17 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
 
   if (mode === "replace") {
     stmts.push(...repo.wipeStatements());
+    const profileIds = new Set(d.mod_profiles.map((p) => String(p.id)));
     for (const t of BACKUP_TABLES) {
-      for (const row of d[t]) {
+      for (const row0 of d[t]) {
+        let row = row0;
+        // A modding profile or Discover answer whose game isn't in the file loses only its link.
+        if ((t === "mod_profiles" || t === "discover_marks") && row.game_id != null && !gameIds.has(String(row.game_id))) {
+          if (t === "discover_marks" && String(row.item_key).startsWith("game:")) continue;
+          row = { ...row, game_id: null };
+        }
         if (row.game_id != null && t !== "events" && t !== "rec_events" && !gameIds.has(String(row.game_id))) continue;
+        if (row.profile_id != null && !profileIds.has(String(row.profile_id))) continue;
         stmts.push(repo.insertStatement(t, row, t === "game_tags" || t === "collection_games" ? "ignore" : "insert"));
       }
     }
@@ -320,6 +338,31 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
     if (haveRec.has(recKey(row))) continue;
     const { id: _rid, ...noId } = row;
     stmts.push(repo.insertStatement("rec_events", noId));
+  }
+  // Discover answers: yours win; ones you don't have are added (library-game keys follow the matched game).
+  for (const mk of d.discover_marks ?? []) {
+    const key = String(mk.item_key);
+    let gameId = mk.game_id == null ? null : String(mk.game_id);
+    let itemKey = key;
+    if (key.startsWith("game:")) {
+      const src = key.slice(5);
+      if (!gameIds.has(src)) continue;
+      gameId = remap(src);
+      itemKey = `game:${gameId}`;
+    } else if (gameId != null) gameId = gameIds.has(gameId) ? remap(gameId) : null;
+    stmts.push(repo.insertStatement("discover_marks", { ...mk, item_key: itemKey, game_id: gameId }, "ignore"));
+  }
+  // Modding companion: profiles you don't have yet (by id), with their lists, notes, checklists and runs.
+  const haveProfiles = new Set((await repo.driver.select<Row>(`SELECT id FROM mod_profiles`)).map((r) => String(r.id)));
+  const newProfiles = new Set<string>();
+  for (const p of d.mod_profiles ?? []) {
+    if (haveProfiles.has(String(p.id))) continue;
+    newProfiles.add(String(p.id));
+    const gid = p.game_id == null ? null : gameIds.has(String(p.game_id)) ? remap(p.game_id) : null;
+    stmts.push(repo.insertStatement("mod_profiles", { ...p, game_id: gid }, "ignore"));
+  }
+  for (const t of ["mod_entries", "mod_notes", "mod_checklist", "mod_runs"] as const) {
+    for (const row of d[t] ?? []) if (newProfiles.has(String(row.profile_id))) stmts.push(repo.insertStatement(t, row, "ignore"));
   }
   // Settings: only keys you don't have yet.
   for (const s of d.settings) stmts.push(repo.insertStatement("settings", s, "ignore"));

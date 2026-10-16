@@ -1,4 +1,4 @@
-name: Steam endpoint probe
+name: Endpoint probe (Steam, Modrinth, CurseForge)
 
 # Checks the public Steam endpoints REWIND uses still answer the way the app expects.
 # Manual only (Actions tab -> Steam endpoint probe -> Run workflow) or pushes to the 'probe' branch.
@@ -18,7 +18,10 @@ jobs:
         with:
           node-version: 22
       - name: Probe
-        run: node tools/probe-steam.mjs | tee probe.txt
+        run: |
+          node tools/probe-steam.mjs > probe.txt || true
+          node tools/probe-mods.mjs >> probe.txt || true
+          tail -c 2000 probe.txt
       - name: Save report to probe-logs branch
         if: always()
         env:

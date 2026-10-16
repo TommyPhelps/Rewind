@@ -1,7 +1,9 @@
 // The one doorway to the internet. All lookups go through a Transport (in the desktop
-// app: the Rust `http_request` command, which only allows Steam and IGDB hosts).
+// app: the Rust `http_request` command, which only allows Steam, IGDB, Modrinth and
+// CurseForge hosts).
 // This file adds per-host pacing, retries with back-off, and plain-language errors.
-// Nothing here ever runs unless you start a Steam import or a metadata sync.
+// Nothing here runs unless you start an import, a sync, or open an online Discover /
+// modpack view.
 
 export type NetErrorKind = "offline" | "timeout" | "rate_limited" | "auth" | "not_found" | "blocked" | "server" | "bad_response" | "cancelled";
 
@@ -60,7 +62,7 @@ function friendly(kind: NetErrorKind, detail = ""): string {
     case "rate_limited":
       return "The service asked REWIND to slow down. It will wait and carry on.";
     case "auth":
-      return "The service refused the request. Check the key or ID under Metadata → Connections.";
+      return "The service refused the request. Check the key or ID under Connections.";
     case "blocked":
       return `Request blocked: ${detail}`;
     case "bad_response":
@@ -88,6 +90,8 @@ const SPACING_MS: Record<string, number> = {
   "api.steampowered.com": 350,
   "api.igdb.com": 300, // IGDB allows 4 requests / second
   "id.twitch.tv": 1000,
+  "api.modrinth.com": 250, // Modrinth allows 300 requests / minute
+  "api.curseforge.com": 500,
 };
 const DEFAULT_SPACING = 120; // image CDNs
 

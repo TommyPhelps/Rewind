@@ -3,6 +3,8 @@ import { BACKUP_TABLES, migrate, type BackupTable } from "./schema.ts";
 import { canon } from "../lib/canon.ts";
 import type { RecEvent } from "../rec/taste.ts";
 import type { MetaRecord, Provider } from "../meta/types.ts";
+import type { Mark, MarkKind } from "../discover/marks.ts";
+import type { CheckItem, ModEntry, ModNote, ModProfile, ModRun, NoteKind, ProfilePatch, ProfileStatus, RunStatus } from "../mods/companionTypes.ts";
 import type {
   Collection,
   EventRow,
@@ -68,6 +70,20 @@ export function metaStatement(m: MetaRecord): Statement {
       m.fetchedAt,
       m.updatedAt,
     ],
+  };
+}
+
+export function rowToMark(r: Row): Mark {
+  return {
+    key: String(r.item_key),
+    kind: r.kind as MarkKind,
+    title: String(r.title),
+    gameId: str(r.game_id),
+    snapshot: json<Record<string, unknown>>(r.snapshot, {}),
+    times: Number(r.times ?? 1),
+    note: String(r.note ?? ""),
+    createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at),
   };
 }
 
@@ -594,6 +610,14 @@ export class Repo {
     return json<T | null>(r[0].value, null);
   }
 
+  /** A cached lookup of any age, with when it was fetched (for "as of" labels and offline use). */
+  async getCacheEntry<T>(key: string): Promise<{ value: T; fetchedAt: string } | null> {
+    const r = await this.db.select<Row>(`SELECT value, fetched_at FROM http_cache WHERE key = ?`, [key]);
+    if (!r.length) return null;
+    const value = json<T | null>(r[0].value, null);
+    return value == null ? null : { value, fetchedAt: String(r[0].fetched_at) };
+  }
+
   async setCache(key: string, value: unknown): Promise<void> {
     await this.db.execute(
       `INSERT INTO http_cache (key, value, fetched_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at`,
@@ -666,6 +690,216 @@ export class Repo {
       reason: str(r.reason),
       context: json<Record<string, unknown>>(r.context, {}),
     }));
+  }
+
+  // ---------- Discover answers ----------
+
+  async loadMarks(): Promise<Mark[]> {
+    const rows = await this.db.select<Row>(`SELECT * FROM discover_marks ORDER BY updated_at DESC`);
+    return rows.map(rowToMark);
+  }
+
+  /**
+   * Records your answer to a suggestion. Saying the same thing again counts up (a second
+   * "Not interested" hides it for longer); a different answer replaces the old one.
+   * Also logged in the recommendation history so Pick for me can use it.
+   */
+  async setMark(input: { key: string; kind: MarkKind; title: string; gameId?: string | null; snapshot?: Record<string, unknown>; note?: string }): Promise<Mark> {
+    const now = nowIso();
+    const cur = (await this.db.select<Row>(`SELECT * FROM discover_marks WHERE item_key = ?`, [input.key]))[0];
+    const times = cur && cur.kind === input.kind ? Number(cur.times) + 1 : 1;
+    const snapshot = input.snapshot ?? (cur ? json<Record<string, unknown>>(cur.snapshot, {}) : {});
+    await this.db.batch([
+      {
+        sql: `INSERT INTO discover_marks (item_key, kind, title, game_id, snapshot, times, note, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(item_key) DO UPDATE SET kind = excluded.kind, title = excluded.title, game_id = excluded.game_id,
+                snapshot = excluded.snapshot, times = excluded.times, note = excluded.note, updated_at = excluded.updated_at`,
+        params: [input.key, input.kind, input.title, input.gameId ?? null, JSON.stringify(snapshot), times, input.note ?? (cur ? String(cur.note ?? "") : ""), cur ? String(cur.created_at) : now, now],
+      },
+      {
+        sql: `INSERT INTO rec_events (ts, kind, game_id, reason, context) VALUES (?, ?, ?, ?, ?)`,
+        params: [now, "discover", input.gameId ?? null, input.kind, JSON.stringify({ key: input.key, title: input.title })],
+      },
+      // A "Not interested" on a library game also counts as a pass in Pick for me (it fades the same way).
+      ...(input.kind === "not_interested" && input.gameId
+        ? [{ sql: `INSERT INTO rec_events (ts, kind, game_id, reason, context) VALUES (?, ?, ?, ?, ?)`, params: [now, "pass", input.gameId, "not_interested", JSON.stringify({ from: "discover" })] }]
+        : []),
+    ]);
+    return rowToMark((await this.db.select<Row>(`SELECT * FROM discover_marks WHERE item_key = ?`, [input.key]))[0]);
+  }
+
+  async updateMarkSnapshot(key: string, snapshot: Record<string, unknown>): Promise<void> {
+    await this.db.execute(`UPDATE discover_marks SET snapshot = ? WHERE item_key = ?`, [JSON.stringify(snapshot), key]);
+  }
+
+  async clearMark(key: string): Promise<void> {
+    const cur = (await this.db.select<Row>(`SELECT * FROM discover_marks WHERE item_key = ?`, [key]))[0];
+    if (!cur) return;
+    await this.db.batch([
+      { sql: `DELETE FROM discover_marks WHERE item_key = ?`, params: [key] },
+      {
+        sql: `INSERT INTO rec_events (ts, kind, game_id, reason, context) VALUES (?, ?, ?, ?, ?)`,
+        params: [nowIso(), "discover", str(cur.game_id), "cleared", JSON.stringify({ key, was: cur.kind })],
+      },
+    ]);
+  }
+
+  // ---------- modding companion ----------
+
+  async loadModProfiles(): Promise<ModProfile[]> {
+    const [ps, es, ns, cs, rs] = await Promise.all([
+      this.db.select<Row>(`SELECT * FROM mod_profiles ORDER BY sort_order, created_at`),
+      this.db.select<Row>(`SELECT * FROM mod_entries ORDER BY position, added_at`),
+      this.db.select<Row>(`SELECT * FROM mod_notes ORDER BY created_at`),
+      this.db.select<Row>(`SELECT * FROM mod_checklist ORDER BY position`),
+      this.db.select<Row>(`SELECT * FROM mod_runs ORDER BY COALESCE(started_at, '9999')`),
+    ]);
+    const group = <T extends { profileId: string }>(xs: T[]) => {
+      const m = new Map<string, T[]>();
+      for (const x of xs) (m.get(x.profileId) ?? m.set(x.profileId, []).get(x.profileId)!).push(x);
+      return m;
+    };
+    const entries = group(es.map((r): ModEntry => ({ id: String(r.id), profileId: String(r.profile_id), position: Number(r.position), name: String(r.name), url: String(r.url ?? ""), version: String(r.version ?? ""), category: String(r.category ?? ""), enabled: Number(r.enabled) === 1, notes: String(r.notes ?? ""), addedAt: String(r.added_at) })));
+    const notes = group(ns.map((r): ModNote => ({ id: String(r.id), profileId: String(r.profile_id), kind: r.kind as NoteKind, title: String(r.title ?? ""), body: String(r.body ?? ""), mods: json<string[]>(r.mods, []), sourceUrl: String(r.source_url ?? ""), status: r.status === "resolved" ? "resolved" : "open", createdAt: String(r.created_at), updatedAt: String(r.updated_at) })));
+    const checks = group(cs.map((r): CheckItem => ({ id: String(r.id), profileId: String(r.profile_id), position: Number(r.position), text: String(r.text), doneAt: str(r.done_at) })));
+    const runs = group(rs.map((r): ModRun => ({ id: String(r.id), profileId: String(r.profile_id), name: String(r.name ?? ""), startedAt: str(r.started_at), endedAt: str(r.ended_at), status: r.status as RunStatus, notes: String(r.notes ?? "") })));
+    return ps.map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      gameKey: String(r.game_key ?? "other"),
+      gameId: str(r.game_id),
+      gameTitle: String(r.game_title ?? ""),
+      manager: String(r.manager ?? ""),
+      gameVersion: String(r.game_version ?? ""),
+      status: r.status as ProfileStatus,
+      packKey: str(r.pack_key),
+      notes: String(r.notes ?? ""),
+      sortOrder: Number(r.sort_order ?? 0),
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+      entries: entries.get(String(r.id)) ?? [],
+      modNotes: notes.get(String(r.id)) ?? [],
+      checklist: checks.get(String(r.id)) ?? [],
+      runs: runs.get(String(r.id)) ?? [],
+    }));
+  }
+
+  async createModProfile(p: { name: string; gameKey: string; gameId?: string | null; gameTitle?: string; manager?: string; packKey?: string | null; checklist?: string[]; entries?: { name: string; url?: string; version?: string; category?: string; enabled?: boolean }[] }): Promise<string> {
+    const id = newId();
+    const now = nowIso();
+    const order = Number((await this.db.select<Row>(`SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM mod_profiles`))[0]?.n ?? 0);
+    const stmts: Statement[] = [
+      {
+        sql: `INSERT INTO mod_profiles (id, name, game_key, game_id, game_title, manager, pack_key, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [id, p.name.trim() || "New profile", p.gameKey, p.gameId ?? null, p.gameTitle ?? "", p.manager ?? "", p.packKey ?? null, order, now, now],
+      },
+      ...(p.checklist ?? []).map((text, i) => ({ sql: `INSERT INTO mod_checklist (id, profile_id, position, text) VALUES (?, ?, ?, ?)`, params: [newId(), id, i, text] as SqlValue[] })),
+      ...this.entryStatements(id, p.entries ?? [], 0, now),
+      this.eventStatement("mod_profile_created", p.gameId ?? null, { name: p.name, game: p.gameKey }),
+    ];
+    await this.db.batch(stmts);
+    return id;
+  }
+
+  private entryStatements(profileId: string, entries: { name: string; url?: string; version?: string; category?: string; enabled?: boolean; notes?: string }[], start: number, now = nowIso()): Statement[] {
+    return entries.map((e, i) => ({
+      sql: `INSERT INTO mod_entries (id, profile_id, position, name, url, version, category, enabled, notes, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [newId(), profileId, start + i, e.name.slice(0, 300), (e.url ?? "").slice(0, 600), (e.version ?? "").slice(0, 80), (e.category ?? "").slice(0, 60), e.enabled === false ? 0 : 1, e.notes ?? "", now],
+    }));
+  }
+
+  async updateModProfile(id: string, patch: ProfilePatch): Promise<void> {
+    const cols: Record<keyof ProfilePatch, string> = { name: "name", gameKey: "game_key", gameId: "game_id", gameTitle: "game_title", manager: "manager", gameVersion: "game_version", status: "status", packKey: "pack_key", notes: "notes", sortOrder: "sort_order" };
+    const keys = (Object.keys(patch) as (keyof ProfilePatch)[]).filter((k) => k in cols);
+    if (!keys.length) return;
+    await this.db.execute(`UPDATE mod_profiles SET ${keys.map((k) => `${cols[k]} = ?`).join(", ")}, updated_at = ? WHERE id = ?`, [...keys.map((k) => toSql(patch[k])), nowIso(), id]);
+  }
+
+  async deleteModProfile(id: string): Promise<void> {
+    const p = (await this.db.select<Row>(`SELECT name, game_id FROM mod_profiles WHERE id = ?`, [id]))[0];
+    if (!p) return;
+    await this.db.batch([{ sql: `DELETE FROM mod_profiles WHERE id = ?`, params: [id] }, this.eventStatement("mod_profile_deleted", str(p.game_id), { name: p.name })]);
+  }
+
+  /** Adds mods at the end of a profile's list. Returns how many were added. */
+  async addModEntries(profileId: string, entries: { name: string; url?: string; version?: string; category?: string; enabled?: boolean; notes?: string }[]): Promise<number> {
+    const clean = entries.filter((e) => e.name.trim());
+    if (!clean.length) return 0;
+    const start = Number((await this.db.select<Row>(`SELECT COALESCE(MAX(position), -1) + 1 AS n FROM mod_entries WHERE profile_id = ?`, [profileId]))[0]?.n ?? 0);
+    await this.db.batch([...this.entryStatements(profileId, clean, start), { sql: `UPDATE mod_profiles SET updated_at = ? WHERE id = ?`, params: [nowIso(), profileId] }]);
+    return clean.length;
+  }
+
+  async updateModEntry(id: string, patch: Partial<Pick<ModEntry, "name" | "url" | "version" | "category" | "enabled" | "notes">>): Promise<void> {
+    const cols = { name: "name", url: "url", version: "version", category: "category", enabled: "enabled", notes: "notes" } as const;
+    const keys = (Object.keys(patch) as (keyof typeof cols)[]).filter((k) => k in cols);
+    if (!keys.length) return;
+    await this.db.execute(`UPDATE mod_entries SET ${keys.map((k) => `${cols[k]} = ?`).join(", ")} WHERE id = ?`, [...keys.map((k) => toSql(patch[k])), id]);
+  }
+
+  async deleteModEntries(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await this.db.batch(ids.map((id) => ({ sql: `DELETE FROM mod_entries WHERE id = ?`, params: [id] })));
+  }
+
+  async reorderModEntries(profileId: string, orderedIds: string[]): Promise<void> {
+    await this.db.batch(orderedIds.map((id, i) => ({ sql: `UPDATE mod_entries SET position = ? WHERE id = ? AND profile_id = ?`, params: [i, id, profileId] })));
+  }
+
+  async saveModNote(n: Partial<ModNote> & { profileId: string }): Promise<string> {
+    const now = nowIso();
+    const id = n.id ?? newId();
+    await this.db.execute(
+      `INSERT INTO mod_notes (id, profile_id, kind, title, body, mods, source_url, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET kind = excluded.kind, title = excluded.title, body = excluded.body, mods = excluded.mods,
+         source_url = excluded.source_url, status = excluded.status, updated_at = excluded.updated_at`,
+      [id, n.profileId, n.kind ?? "compat", n.title ?? "", n.body ?? "", JSON.stringify(n.mods ?? []), n.sourceUrl ?? "", n.status ?? "open", n.createdAt ?? now, now],
+    );
+    return id;
+  }
+
+  async deleteModNote(id: string): Promise<void> {
+    await this.db.execute(`DELETE FROM mod_notes WHERE id = ?`, [id]);
+  }
+
+  async addCheckItems(profileId: string, texts: string[]): Promise<void> {
+    const clean = texts.map((t) => t.trim()).filter(Boolean);
+    if (!clean.length) return;
+    const start = Number((await this.db.select<Row>(`SELECT COALESCE(MAX(position), -1) + 1 AS n FROM mod_checklist WHERE profile_id = ?`, [profileId]))[0]?.n ?? 0);
+    await this.db.batch(clean.map((text, i) => ({ sql: `INSERT INTO mod_checklist (id, profile_id, position, text) VALUES (?, ?, ?, ?)`, params: [newId(), profileId, start + i, text] })));
+  }
+
+  async setCheckDone(id: string, done: boolean): Promise<void> {
+    await this.db.execute(`UPDATE mod_checklist SET done_at = ? WHERE id = ?`, [done ? nowIso() : null, id]);
+  }
+
+  async updateCheckText(id: string, text: string): Promise<void> {
+    await this.db.execute(`UPDATE mod_checklist SET text = ? WHERE id = ?`, [text, id]);
+  }
+
+  async deleteCheckItem(id: string): Promise<void> {
+    await this.db.execute(`DELETE FROM mod_checklist WHERE id = ?`, [id]);
+  }
+
+  /** Unticks every item, for the next time you change your setup. */
+  async resetChecklist(profileId: string): Promise<void> {
+    await this.db.execute(`UPDATE mod_checklist SET done_at = NULL WHERE profile_id = ?`, [profileId]);
+  }
+
+  async saveModRun(r: Partial<ModRun> & { profileId: string }): Promise<string> {
+    const id = r.id ?? newId();
+    await this.db.execute(
+      `INSERT INTO mod_runs (id, profile_id, name, started_at, ended_at, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, started_at = excluded.started_at, ended_at = excluded.ended_at,
+         status = excluded.status, notes = excluded.notes`,
+      [id, r.profileId, r.name ?? "", r.startedAt ?? null, r.endedAt ?? null, r.status ?? "active", r.notes ?? ""],
+    );
+    return id;
+  }
+
+  async deleteModRun(id: string): Promise<void> {
+    await this.db.execute(`DELETE FROM mod_runs WHERE id = ?`, [id]);
   }
 
   // ---------- backup support ----------

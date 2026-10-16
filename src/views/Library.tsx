@@ -50,7 +50,7 @@ export function LibraryView({
   clearPending(): void;
 }) {
   const { games, settings, setSettings, collections, repo, updateGame, bulkUpdate, run, confirm, reloadAll, reloadCollections, toast, profile, recEvents } = useApp();
-  const { taste, series } = useTaste();
+  const { taste, series, marksByGame } = useTaste();
   const allowEst = settings.useUnverifiedLengths;
   const [ui, setUi] = useState<LibUi>(memo ?? { filters: DEFAULT_FILTERS, sort: "title", dir: 1 });
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedId ? [selectedId] : []));
@@ -94,9 +94,9 @@ export function LibraryView({
   // "Pick-for-me fit" sort uses the same engine with no session settings.
   const fit = useMemo(() => {
     if (ui.sort !== "fit") return undefined;
-    const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified: allowEst });
+    const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified: allowEst, marks: marksByGame });
     return new Map(r.results.map((x) => [x.game.id, x.score]));
-  }, [ui.sort, games, taste, recEvents, profile, series, allowEst]);
+  }, [ui.sort, games, taste, recEvents, profile, series, allowEst, marksByGame]);
   const rows = useMemo(
     () => sortGames(filterGames(games, f, allowEst, members), ui.sort, ui.dir, allowEst, fit),
     [games, f, allowEst, members, ui.sort, ui.dir, fit],

@@ -23,10 +23,16 @@ let SERIES: ReturnType<typeof buildSeriesIndex> | null = null;
 
 /** The taste model, rebuilt whenever your games, profile or feedback change. */
 export function useTaste() {
-  const { games, profile, recEvents, settings } = useApp();
+  const { games, profile, recEvents, settings, marks } = useApp();
   const series = useMemo(() => (SERIES ??= buildSeriesIndex()), []);
   const taste = useMemo(() => buildTaste(games, profile, recEvents, new Date(), settings.useUnverifiedLengths), [games, profile, recEvents, settings.useUnverifiedLengths]);
-  return { taste, series };
+  // Your Discover answers about library games ("Want to try", "Already played"…), for Pick for me.
+  const marksByGame = useMemo(() => {
+    const m = new Map<string, { kind: string }>();
+    for (const x of marks.values()) if (x.gameId) m.set(x.gameId, x);
+    return m;
+  }, [marks]);
+  return { taste, series, marksByGame };
 }
 
 /** Saved picker state: last session, custom presets, weights. */

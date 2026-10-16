@@ -67,6 +67,42 @@ export async function saveJsonFile(title: string, defaultName: string, text: str
   return path;
 }
 
+/** Open dialog for a plain-text list (mod lists). The file is only read, never changed. */
+export async function pickTextFile(title: string): Promise<{ path: string; text: string } | null> {
+  if (!inDesktopApp()) {
+    return new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".txt,.md,.csv,text/plain";
+      input.onchange = async () => {
+        const f = input.files?.[0];
+        resolve(f ? { path: f.name, text: await f.text() } : null);
+      };
+      input.click();
+    });
+  }
+  const path = await openDialog({ title, multiple: false, directory: false, filters: [{ name: "Text lists", extensions: ["txt", "md", "csv"] }, { name: "All files", extensions: ["*"] }] });
+  if (!path || Array.isArray(path)) return null;
+  const text = await invoke<string>("read_text_file", { path });
+  if (text.length > 5_000_000) throw new Error("That file is too large to be a mod list.");
+  return { path, text };
+}
+
+/** Save dialog for a text export (e.g. a mod list as Markdown). */
+export async function saveTextFile(title: string, defaultName: string, text: string, filterName: string, ext: string): Promise<string | null> {
+  if (!inDesktopApp()) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    a.download = defaultName;
+    a.click();
+    return defaultName;
+  }
+  const path = await saveDialog({ title, defaultPath: defaultName, filters: [{ name: filterName, extensions: [ext] }] });
+  if (!path) return null;
+  await invoke("write_text_file", { path, contents: text });
+  return path;
+}
+
 /** Writes an automatic safety snapshot to the app's backups folder. */
 export async function writeSafetySnapshot(name: string, text: string): Promise<string> {
   if (!inDesktopApp()) return `(dev) ${name}`;

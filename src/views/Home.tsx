@@ -14,7 +14,7 @@ import { lastPlayedAny, progressRatio, progressState, progressText } from "../re
 
 export function HomeView({ nav }: { nav: Nav }) {
   const { games, gameById, collections, settings, repo, updateGame, profile, recEvents, setLogFor } = useApp();
-  const { taste, series } = useTaste();
+  const { taste, series, marksByGame } = useTaste();
   const allowEst = settings.useUnverifiedLengths;
   const [events, setEvents] = useState<EventRow[]>([]);
   const [lastSession, setLastSession] = useState<Session | null>(null);
@@ -43,9 +43,9 @@ export function HomeView({ nav }: { nav: Nav }) {
   // Tonight: whatever you last asked Pick for me, applied to today.
   const tonight = useMemo(() => {
     if (!lastSession) return [];
-    const r = recommend({ games, taste, events: recEvents, session: lastSession, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified: allowEst });
+    const r = recommend({ games, taste, events: recEvents, session: lastSession, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified: allowEst, marks: marksByGame });
     return diversify(r.results.filter((x) => !x.heldBack), 3, taste.idf);
-  }, [lastSession, games, taste, recEvents, profile, series, allowEst]);
+  }, [lastSession, games, taste, recEvents, profile, series, allowEst, marksByGame]);
   const counts = useMemo(() => STATUSES.map((s) => ({ ...s, n: games.filter((g) => g.status === s.id).length })), [games]);
   const needsInfo = useMemo(() => games.filter((g) => !g.tags.length || !displayLength(g, allowEst)).length, [games, allowEst]);
   const sessionDesc = lastSession ? describeSession(lastSession) : "";

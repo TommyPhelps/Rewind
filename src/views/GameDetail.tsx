@@ -22,10 +22,14 @@ import { TRAIT_LABEL, TRAITS } from "../rec/traits.ts";
 import { REASONS } from "../rec/taste.ts";
 import { SCALES } from "../lib/types.ts";
 import { AboutSection, Banner, PlaytimeRows, SourcesSection } from "./GameMeta.tsx";
+import { presetById, presetForGame } from "../mods/companion.ts";
+import type { ModProfile } from "../mods/companionTypes.ts";
+import { gameKey, hiddenUntil, MARK_LABEL } from "../discover/marks.ts";
+import type { Nav } from "../App.tsx";
 
-export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
+export function GameDetail({ id, onClose, nav }: { id: string; onClose(): void; nav?: Nav }) {
   const { games, gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections, profile, recEvents, setLogFor } = useApp();
-  const { taste, series } = useTaste();
+  const { taste, series, marksByGame } = useTaste();
   const g = gameById.get(id);
   const [width, setWidth] = useState(settings.detailWidth);
   const [dragging, setDragging] = useState(false);
@@ -155,9 +159,12 @@ export function GameDetail({ id, onClose }: { id: string; onClose(): void }) {
             ))}
         </div>
 
-        <WhySection gameId={id} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={settings.useUnverifiedLengths} />
+        <WhySection gameId={id} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={settings.useUnverifiedLengths} marks={marksByGame} />
 
         <AboutSection game={g} />
+
+        <DiscoverAnswer gameId={g.id} />
+        <ModdingSection game={g} nav={nav} />
 
         <details className="sec" open>
           <summary>Overview</summary>
@@ -535,6 +542,14 @@ export function describeEvent(e: EventRow, title?: string): string {
     }
     case "legacy_log":
       return `[old REWIND] ${String(e.data.text).replace(/[™®]/g, "")}`;
+    case "discover_lookup":
+      return `Discover looked beyond your library on IGDB: ${Number(e.data.games ?? 0)} games found from ${Number(e.data.seeds ?? 0)} favourites`;
+    case "mod_profile_created":
+      return `${t}modding profile "${String(e.data.name)}" created`;
+    case "mod_profile_deleted":
+      return `${t}modding profile "${String(e.data.name)}" deleted`;
+    case "game_added_from_discover":
+      return `${t || String(e.data.title) + ": "}added to library from Discover (${String(e.data.ownership)})`;
     default:
       return `${t}${e.type}`;
   }
@@ -548,7 +563,9 @@ function WhySection({
   profile,
   recEvents,
   allowUnverified,
+  marks,
 }: {
+  marks: Map<string, { kind: string }>;
   gameId: string;
   games: Game[];
   taste: ReturnType<typeof useTaste>["taste"];
@@ -557,7 +574,7 @@ function WhySection({
   recEvents: ReturnType<typeof useApp>["recEvents"];
   allowUnverified: boolean;
 }) {
-  const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified });
+  const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified, marks });
   const rec = r.results.find((x) => x.game.id === gameId);
   return (
     <details className="sec" open>
@@ -616,5 +633,64 @@ function TraitBars({ values }: { values: Record<string, number | null> | undefin
         </div>
       ))}
     </div>
+  );
+}
+
+/** Your Discover answer for this game, if any, with a way to clear it. */
+function DiscoverAnswer({ gameId }: { gameId: string }) {
+  const { marks, clearMark } = useApp();
+  const m = marks.get(gameKey(gameId));
+  if (!m) return null;
+  const until = hiddenUntil(m);
+  return (
+    <div className="note info row" style={{ fontSize: "var(--fs-s)" }}>
+      <span className="grow">
+        Your answer in Discover: <b>{MARK_LABEL[m.kind]}</b> ({fmtDate(m.updatedAt)}){until ? ` — hidden from suggestions until ${until}` : ""}.
+      </span>
+      <button className="btn ghost sm" onClick={() => void clearMark(m.key)}>
+        Clear
+      </button>
+    </div>
+  );
+}
+
+/** Modding-companion profiles linked to this game. */
+function ModdingSection({ game, nav }: { game: Game; nav?: Nav }) {
+  const { repo, run } = useApp();
+  const [profiles, setProfiles] = useState<ModProfile[] | null>(null);
+  const preset = presetForGame(game);
+  useEffect(() => {
+    void repo.loadModProfiles().then((ps) => setProfiles(ps.filter((p) => p.gameId === game.id)));
+  }, [repo, game.id]);
+  if (!profiles || (!profiles.length && !preset)) return null;
+  return (
+    <details className="sec" open={profiles.length > 0}>
+      <summary>Modding {profiles.length > 0 && <span className="dim">({profiles.length})</span>}</summary>
+      <div className="body" style={{ display: "grid", gap: "0.4rem" }}>
+        {profiles.map((p) => (
+          <div key={p.id} className="row">
+            <span className="grow">
+              <b>{p.name}</b> <span className="dim">· {p.entries.length} mods{p.manager ? ` · ${p.manager}` : ""} · {p.status}</span>
+            </span>
+            {nav && (
+              <button className="btn sm" onClick={() => nav.openModProfile(p.id)}>
+                Open
+              </button>
+            )}
+          </div>
+        ))}
+        {preset && nav && (
+          <button
+            className="btn sm"
+            onClick={async () => {
+              const id = await run(() => repo.createModProfile({ name: `${cleanTitle(game.title)} — modded`, gameKey: preset.id, gameId: game.id, gameTitle: game.title, manager: presetById(preset.id).managers[0] ?? "", checklist: preset.checklist }));
+              if (id) nav.openModProfile(id);
+            }}
+          >
+            <Icon name="plus" /> Plan a modded playthrough
+          </button>
+        )}
+      </div>
+    </details>
   );
 }

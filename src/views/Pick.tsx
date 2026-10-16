@@ -41,7 +41,7 @@ type Mood = "ready" | "not_in_mood";
 
 export function PickView({ nav, request }: { nav: Nav; request: PickRequest | null }) {
   const { games, profile, recEvents, settings, addRecEvent, updateGame, confirm, toast } = useApp();
-  const { taste, series } = useTaste();
+  const { taste, series, marksByGame } = useTaste();
   const ps = usePickerSettings();
   const [tab, setTab] = useState<"pick" | "taste" | "weights">("pick");
   const [mood, setMood] = useState<Mood>("ready");
@@ -65,8 +65,9 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
         profile,
         series,
         allowUnverified: settings.useUnverifiedLengths,
+        marks: marksByGame,
       }),
-    [games, taste, recEvents, S, ps.weights, profile, series, settings.useUnverifiedLengths],
+    [games, taste, recEvents, S, ps.weights, profile, series, settings.useUnverifiedLengths, marksByGame],
   );
   const heldBack = useMemo(() => result.results.filter((r) => r.heldBack), [result]);
   const list = useMemo(() => diversify(result.results.filter((r) => !r.heldBack), 6, taste.idf, skipped), [result, taste.idf, skipped]);
@@ -82,7 +83,7 @@ export function PickView({ nav, request }: { nav: Nav; request: PickRequest | nu
   const surprise = (sessionOverride?: Session) => {
     const base = sessionOverride ?? S;
     const r = sessionOverride
-      ? recommend({ games, taste, events: recEvents, session: base, weights: ps.weights, profile, series, allowUnverified: settings.useUnverifiedLengths })
+      ? recommend({ games, taste, events: recEvents, session: base, weights: ps.weights, profile, series, allowUnverified: settings.useUnverifiedLengths, marks: marksByGame })
       : result;
     const n = surpriseN + 1;
     setSurpriseN(n);

@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, type AppSettings, type Collection, type Game, type Ga
 import { DEFAULT_PROFILE } from "../data/profileDefaults.ts";
 import { applyReferenceData } from "../migrate/reference.ts";
 import type { RecEvent } from "../rec/taste.ts";
+import type { Mark, MarkKind } from "../discover/marks.ts";
 
 export interface Toast {
   id: number;
@@ -33,6 +34,10 @@ interface Store {
   /** Recommendation history: accepts, passes, drop reasons, resets. */
   recEvents: RecEvent[];
   addRecEvent(kind: string, gameId: string | null, reason?: string | null, context?: Record<string, unknown>): Promise<void>;
+  /** Your answers in Discover (Interested, Not interested, Wishlisted…), by item key. */
+  marks: Map<string, Mark>;
+  setMark(input: { key: string; kind: MarkKind; title: string; gameId?: string | null; snapshot?: Record<string, unknown> }): Promise<void>;
+  clearMark(key: string): Promise<void>;
   /** Asks "why did you drop it?" / "how was it?" after a single game's status changes. */
   feedbackFor: { gameId: string; kind: "dropped" | "completed" } | null;
   setFeedbackFor(f: { gameId: string; kind: "dropped" | "completed" } | null): void;
@@ -100,6 +105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfileState] = useState<GamingProfile>(DEFAULT_PROFILE);
   const [firstRun, setFirstRun] = useState(false);
   const [recEvents, setRecEvents] = useState<RecEvent[]>([]);
+  const [marks, setMarks] = useState<Map<string, Mark>>(new Map());
   const [feedbackFor, setFeedbackFor] = useState<Store["feedbackFor"]>(null);
   const [logFor, setLogFor] = useState<Store["logFor"]>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -130,12 +136,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const reloadGames = useCallback(async () => setGames(await repo.loadGames()), [repo]);
   const reloadCollections = useCallback(async () => setCollections(await repo.loadCollections()), [repo]);
   const reloadRecEvents = useCallback(async () => setRecEvents(await repo.loadRecEvents()), [repo]);
+  const reloadMarks = useCallback(async () => setMarks(new Map((await repo.loadMarks()).map((m) => [m.key, m]))), [repo]);
   const reloadAll = useCallback(async () => {
     // Newly imported games get the bundled reference estimates (only where unknown).
     await applyReferenceData(repo).catch(() => undefined);
-    await Promise.all([reloadGames(), reloadCollections(), reloadRecEvents()]);
+    await Promise.all([reloadGames(), reloadCollections(), reloadRecEvents(), reloadMarks()]);
     setProfileState(await repo.getSetting("profile", DEFAULT_PROFILE));
-  }, [repo, reloadGames, reloadCollections, reloadRecEvents]);
+  }, [repo, reloadGames, reloadCollections, reloadRecEvents, reloadMarks]);
 
   useEffect(() => {
     (async () => {
@@ -186,6 +193,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     },
     [repo, run, reloadRecEvents],
+  );
+
+  const setMark = useCallback(
+    async (input: { key: string; kind: MarkKind; title: string; gameId?: string | null; snapshot?: Record<string, unknown> }) => {
+      await run(async () => {
+        await repo.setMark(input);
+        await Promise.all([reloadMarks(), reloadRecEvents()]);
+      });
+    },
+    [repo, run, reloadMarks, reloadRecEvents],
+  );
+
+  const clearMark = useCallback(
+    async (key: string) => {
+      await run(async () => {
+        await repo.clearMark(key);
+        await Promise.all([reloadMarks(), reloadRecEvents()]);
+      });
+    },
+    [repo, run, reloadMarks, reloadRecEvents],
   );
 
   const bulkUpdate = useCallback(
@@ -266,6 +293,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     firstRun,
     recEvents,
     addRecEvent,
+    marks,
+    setMark,
+    clearMark,
     feedbackFor,
     setFeedbackFor,
     logFor,

@@ -158,6 +158,84 @@ export const MIGRATIONS: { version: number; name: string; sql: string[] }[] = [
       `CREATE TABLE http_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, fetched_at TEXT NOT NULL)`,
     ],
   },
+  {
+    version: 4,
+    name: "discovery feedback and modding companion",
+    sql: [
+      // Your answers to Discover suggestions: games in your library ("game:<id>"), games you
+      // don't own ("igdb:<id>") and modpacks ("mr:<id>" Modrinth, "cf:<id>" CurseForge).
+      // The snapshot keeps what was shown, so saved items still display offline.
+      `CREATE TABLE discover_marks (
+        item_key TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('interested','not_interested','played','want','wishlist')),
+        title TEXT NOT NULL,
+        game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
+        snapshot TEXT NOT NULL DEFAULT '{}',
+        times INTEGER NOT NULL DEFAULT 1,
+        note TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+      `CREATE INDEX discover_marks_kind ON discover_marks(kind)`,
+      // Modding companion: your own records only. REWIND never touches game or mod-manager files.
+      `CREATE TABLE mod_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        game_key TEXT NOT NULL DEFAULT 'other',
+        game_id TEXT REFERENCES games(id) ON DELETE SET NULL,
+        game_title TEXT NOT NULL DEFAULT '',
+        manager TEXT NOT NULL DEFAULT '',
+        game_version TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'planning' CHECK (status IN ('planning','active','paused','finished','retired')),
+        pack_key TEXT,
+        notes TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+      `CREATE TABLE mod_entries (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL REFERENCES mod_profiles(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL DEFAULT 0,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        notes TEXT NOT NULL DEFAULT '',
+        added_at TEXT NOT NULL
+      )`,
+      `CREATE INDEX mod_entries_profile ON mod_entries(profile_id, position)`,
+      `CREATE TABLE mod_notes (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL REFERENCES mod_profiles(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL DEFAULT 'compat' CHECK (kind IN ('compat','setup','issue','tip')),
+        title TEXT NOT NULL DEFAULT '',
+        body TEXT NOT NULL DEFAULT '',
+        mods TEXT NOT NULL DEFAULT '[]',
+        source_url TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`,
+      `CREATE TABLE mod_checklist (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL REFERENCES mod_profiles(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL DEFAULT 0,
+        text TEXT NOT NULL,
+        done_at TEXT
+      )`,
+      `CREATE TABLE mod_runs (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL REFERENCES mod_profiles(id) ON DELETE CASCADE,
+        name TEXT NOT NULL DEFAULT '',
+        started_at TEXT,
+        ended_at TEXT,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','finished','abandoned')),
+        notes TEXT NOT NULL DEFAULT ''
+      )`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -175,7 +253,25 @@ export const BACKUP_TABLES = [
   "events",
   "settings",
   "rec_events",
+  "discover_marks",
+  "mod_profiles",
+  "mod_entries",
+  "mod_notes",
+  "mod_checklist",
+  "mod_runs",
 ] as const;
+
+/** Schema version each backup section first appeared in (older backups simply lack it). */
+export const TABLE_SINCE: Partial<Record<BackupTable, number>> = {
+  rec_events: 2,
+  game_meta: 3,
+  discover_marks: 4,
+  mod_profiles: 4,
+  mod_entries: 4,
+  mod_notes: 4,
+  mod_checklist: 4,
+  mod_runs: 4,
+};
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 
 export async function currentVersion(db: SqlDriver): Promise<number> {

@@ -77,6 +77,7 @@ export const SOURCE_LABEL: Record<string, string> = {
   import: "Backup import",
   reference: "REWIND reference (unverified estimate)",
   inferred: "Inferred from tags",
+  igdb_modes: "IGDB game modes",
 };
 
 export interface GameLength {

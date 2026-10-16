@@ -1,7 +1,8 @@
 //! Network access for metadata lookups and artwork.
 //!
 //! The web page never talks to the internet directly: every request goes through
-//! `http_request`, which only allows HTTPS to a short list of Steam and IGDB hosts.
+//! `http_request`, which only allows HTTPS to a short list of hosts: Steam, IGDB (via
+//! Twitch), Modrinth and CurseForge.
 //! Artwork is downloaded once into <app data>/artwork and shown from there, so the
 //! library works offline. Errors are prefixed with a kind ("offline:", "timeout:",
 //! "blocked:", "network:") that the front end turns into plain-language messages.
@@ -25,6 +26,10 @@ const ALLOWED_HOSTS: &[&str] = &[
     "id.twitch.tv",
     "api.igdb.com",
     "images.igdb.com",
+    "api.modrinth.com",
+    "cdn.modrinth.com",
+    "api.curseforge.com",
+    "media.forgecdn.net",
 ];
 
 const MAX_BODY: usize = 12 * 1024 * 1024;
@@ -48,7 +53,8 @@ pub fn client() -> Result<reqwest::Client, String> {
         }
     });
     reqwest::Client::builder()
-        .user_agent(concat!("REWIND/", env!("CARGO_PKG_VERSION"), " (personal game library; +https://github.com/TommyPhelps/Rewind)"))
+        // Modrinth asks for a User-Agent naming the project and a contact; no personal details are sent.
+        .user_agent(concat!("TommyPhelps/REWIND/", env!("CARGO_PKG_VERSION"), " (personal game library; +https://github.com/TommyPhelps/Rewind)"))
         .connect_timeout(Duration::from_secs(10))
         .redirect(policy)
         .build()
@@ -62,7 +68,7 @@ fn check_url(raw: &str) -> Result<reqwest::Url, String> {
     }
     if !host_allowed(&url) {
         let host = url.host_str().unwrap_or("");
-        return Err(format!("blocked: REWIND only contacts Steam and IGDB, not {host}"));
+        return Err(format!("blocked: REWIND only contacts Steam, IGDB, Modrinth and CurseForge, not {host}"));
     }
     Ok(url)
 }
@@ -119,9 +125,11 @@ pub async fn http_request(http: tauri::State<'_, Http>, req: HttpReq) -> Result<
     }
     let resp = rb.send().await.map_err(describe)?;
     let status = resp.status().as_u16();
+    // Retry-After (Steam, CurseForge) or Modrinth's X-Ratelimit-Reset, both in seconds.
     let retry_after = resp
         .headers()
         .get("retry-after")
+        .or_else(|| if status == 429 { resp.headers().get("x-ratelimit-reset") } else { None })
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     let bytes = resp.bytes().await.map_err(describe)?;

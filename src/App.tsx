@@ -7,7 +7,8 @@ import { LibraryView } from "./views/Library.tsx";
 import { CollectionsView } from "./views/Collections.tsx";
 import { SettingsView } from "./views/Settings.tsx";
 import { ActivityView } from "./views/Activity.tsx";
-import { PlannedView } from "./views/Planned.tsx";
+import { DiscoverView } from "./views/Discover.tsx";
+import { ModsView } from "./views/Mods.tsx";
 import { GameDetail } from "./views/GameDetail.tsx";
 import { FirstRun } from "./views/FirstRun.tsx";
 import { ImportFlow, type ImportRequest } from "./views/ImportFlow.tsx";
@@ -24,9 +25,9 @@ export type ViewId = "home" | "library" | "discover" | "pick" | "mods" | "activi
 const NAV: { id: ViewId; label: string; icon: string; phase?: number }[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "library", label: "Library", icon: "library" },
-  { id: "discover", label: "Discover", icon: "discover", phase: 4 },
+  { id: "discover", label: "Discover", icon: "discover" },
   { id: "pick", label: "Pick for me", icon: "pick" },
-  { id: "mods", label: "Mods & Modpacks", icon: "mods", phase: 4 },
+  { id: "mods", label: "Mods & Modpacks", icon: "mods" },
   { id: "activity", label: "Activity", icon: "activity" },
   { id: "collections", label: "Collections", icon: "collections" },
   { id: "metadata", label: "Steam & metadata", icon: "download" },
@@ -42,6 +43,8 @@ export interface Nav {
   library(filters: Partial<LibraryFilters>): void;
   /** Opens Pick for me with a ready-made session (and optionally an instant Surprise). */
   pick(session?: Partial<Session>, surprise?: boolean): void;
+  /** Opens a modding-companion profile in Mods & Modpacks. */
+  openModProfile(id: string): void;
 }
 
 export function App() {
@@ -52,6 +55,7 @@ export function App() {
   const [importReq, setImportReq] = useState<ImportRequest | null>(null);
   const [pendingFilters, setPendingFilters] = useState<Partial<LibraryFilters> | null>(null);
   const [pickReq, setPickReq] = useState<PickRequest | null>(null);
+  const [modProfile, setModProfile] = useState<string | null>(null);
   const sync = useSyncState();
 
   const clearPending = useCallback(() => setPendingFilters(null), []);
@@ -74,6 +78,10 @@ export function App() {
       pick: (session, surprise) => {
         setPickReq({ session, surprise, nonce: Date.now() });
         setView("pick");
+      },
+      openModProfile: (id) => {
+        setModProfile(id);
+        setView("mods");
       },
     }),
     [],
@@ -148,7 +156,10 @@ export function App() {
             <button
               key={n.id}
               aria-current={view === n.id ? "page" : undefined}
-              onClick={() => setView(n.id)}
+              onClick={() => {
+                if (n.id === "mods") setModProfile(null);
+                setView(n.id);
+              }}
               title={`${n.label}  (Ctrl+${i + 1})`}
             >
               <Icon name={n.icon} />
@@ -192,10 +203,11 @@ export function App() {
               {view === "settings" && <SettingsView nav={nav} />}
               {view === "metadata" && <MetadataView nav={nav} />}
               {view === "pick" && <PickView nav={nav} request={pickReq} />}
-              {(view === "discover" || view === "mods") && <PlannedView view={view} />}
+              {view === "discover" && <DiscoverView nav={nav} />}
+              {view === "mods" && <ModsView nav={nav} openProfile={modProfile} />}
             </>
           )}
-          {showDetail && selectedId && <GameDetail key={selectedId} id={selectedId} onClose={() => setSelectedId(null)} />}
+          {showDetail && selectedId && <GameDetail key={selectedId} id={selectedId} onClose={() => setSelectedId(null)} nav={nav} />}
         </div>
       </main>
 
@@ -245,8 +257,8 @@ function subtitle(v: ViewId): string {
     case "pick":
       return "explainable suggestions from your own library";
     case "discover":
-      return "beyond your library — later phase";
+      return "shelves picked for you, in and beyond your library";
     case "mods":
-      return "modpacks and modding companion — later phase";
+      return "Minecraft modpacks and your modded playthroughs";
   }
 }

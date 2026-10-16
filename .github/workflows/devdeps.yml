@@ -1,0 +1,28 @@
+name: Dev type packages snapshot
+# Development helper: packs the TypeScript type packages (and the compiler) used by
+# `npm run typecheck` so a sandbox without npm registry access can type-check locally.
+on:
+  push:
+    branches: [devdeps]
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Pack and push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar czf "$RUNNER_TEMP/devdeps.tgz" node_modules/@types node_modules/@tauri-apps/api node_modules/@tauri-apps/plugin-dialog node_modules/@tauri-apps/plugin-opener node_modules/vite/client.d.ts node_modules/vite/types node_modules/vite/package.json node_modules/typescript node_modules/csstype node_modules/undici-types
+          ls -la "$RUNNER_TEMP/devdeps.tgz"
+          cd "$RUNNER_TEMP" && rm -rf r && mkdir r && cd r && git init -q && split -b 40m ../devdeps.tgz devdeps.tgz.part-
+          git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com add . && git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com commit -qm "devdeps ${GITHUB_RUN_NUMBER}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/devdeps-out
