@@ -193,7 +193,7 @@ export function SteamImportDialog({ source, onClose, onImported }: { source: Ste
               >
                 <Icon name="folder" /> Choose Steam folder…
               </button>
-              <span className="dim" style={{ fontSize: "var(--fs-s)" }}>Usually C:\Program Files (x86)\Steam</span>
+              <span className="dim" style={{ fontSize: "var(--fs-meta)" }}>Usually C:\Program Files (x86)\Steam</span>
             </div>
           )}
         </div>
@@ -214,7 +214,7 @@ export function SteamImportDialog({ source, onClose, onImported }: { source: Ste
             Imported: {stage.summary.linked} games matched{stage.summary.added ? `, ${stage.summary.added} added` : ""}, Steam playtime updated for {stage.summary.playtimeUpdated}
             {stage.summary.markedOwned ? `, ${stage.summary.markedOwned} marked Owned` : ""}. A safety snapshot was saved first.
           </div>
-          <div className="dim">Your ratings, notes, statuses and preferences were not changed. Covers and store details come next, from the Metadata screen.</div>
+          <div className="dim">Your ratings, notes, statuses and preferences were not changed. Artwork and store details for new games come from the Library check-up.</div>
         </div>
       )}
       {stage.kind === "preview" && plan && (
@@ -229,7 +229,7 @@ export function SteamImportDialog({ source, onClose, onImported }: { source: Ste
               ))}
               <button aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All <span className="n">{plan.rows.length}</span></button>
             </div>
-            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
+            <div className="dim" style={{ fontSize: "var(--fs-meta)" }}>
               {plan.rows.length} Steam games · {plan.notInSteam} REWIND games aren't in this list and stay exactly as they are.
               {source === "steam_local" && " This PC's Steam client only knows games that this account has launched or installed; owned games never played anywhere won't appear."}
             </div>

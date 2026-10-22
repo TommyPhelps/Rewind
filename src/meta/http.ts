@@ -1,9 +1,8 @@
 // The one doorway to the internet. All lookups go through a Transport (in the desktop
-// app: the Rust `http_request` command, which only allows Steam, IGDB, Modrinth and
-// CurseForge hosts).
+// app: the Rust `http_request` command, which only allows Steam and IGDB hosts).
 // This file adds per-host pacing, retries with back-off, and plain-language errors.
-// Nothing here runs unless you start an import, a sync, or open an online Discover /
-// modpack view.
+// Nothing here runs unless you start an import, add a game, run a sync, or ask Discover to
+// look beyond your library.
 
 export type NetErrorKind = "offline" | "timeout" | "rate_limited" | "auth" | "not_found" | "blocked" | "server" | "bad_response" | "cancelled";
 
@@ -90,8 +89,6 @@ const SPACING_MS: Record<string, number> = {
   "api.steampowered.com": 350,
   "api.igdb.com": 300, // IGDB allows 4 requests / second
   "id.twitch.tv": 1000,
-  "api.modrinth.com": 250, // Modrinth allows 300 requests / minute
-  "api.curseforge.com": 500,
 };
 const DEFAULT_SPACING = 120; // image CDNs
 

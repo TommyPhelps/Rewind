@@ -11,6 +11,8 @@ import type { Game } from "../lib/types.ts";
 import { confidenceOf, rankCandidates, type Confidence } from "./match.ts";
 import type { OwnedGame } from "./steam.ts";
 import { isProbablyNotAGame } from "./steamLocal.ts";
+import { sourceStatement } from "../db/repo.ts";
+import { steamLaunch } from "../launchers/launch.ts";
 import type { MetaRecord } from "./types.ts";
 
 /** Where the Steam numbers came from: your account via the Web API, or the Steam client on this PC. */
@@ -196,6 +198,7 @@ export function steamPlanStatements(repo: Repo, plan: SteamPlan, games: Game[], 
               storefront = COALESCE(storefront, 'Steam')${own ? ", ownership = 'owned'" : ""}, meta_source = ?, updated_at = ? WHERE id = ?`,
         params: [...(setApp ? [o.appid] : []), minutes, last, t, ms, t, g.id],
       });
+      stmts.push(sourceStatement(g.id, { source: "steam", externalId: String(o.appid), title: o.name, method: plan.source === "steam_local" ? "local_scan" : "steam_import", playtimeMin: minutes, lastSeenAt: t, launch: steamLaunch(o.appid) }, t));
       if ((g.steamPlaytimeMin ?? null) !== minutes) s.playtimeUpdated++;
       if (own) s.markedOwned++;
       const appForMeta = setApp ? o.appid : g.steamAppId;
@@ -235,6 +238,7 @@ export function steamPlanStatements(repo: Repo, plan: SteamPlan, games: Game[], 
       }),
     );
     stmts.push(metaInsert(metaRow(id, o.appid)));
+    stmts.push(sourceStatement(id, { source: "steam", externalId: String(o.appid), title: o.name, method: plan.source === "steam_local" ? "local_scan" : "steam_import", playtimeMin: o.playtimeMin, lastSeenAt: t, launch: steamLaunch(o.appid) }, t));
     stmts.push(repo.eventStatement("game_added", id, { title: o.name, from: plan.source }, t));
     s.added++;
   }

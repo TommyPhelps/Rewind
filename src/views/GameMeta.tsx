@@ -48,7 +48,7 @@ export function Banner({ game }: { game: Game }) {
   const src = artSrc(file);
   if (!src || bad) return null;
   return (
-    <div className="dbanner" aria-hidden="true">
+    <div className="d-hero" aria-hidden="true">
       <img src={src} alt="" onError={() => setBad(true)} />
     </div>
   );
@@ -61,7 +61,7 @@ const firstData = (g: Game): { d: MetaData; p: Provider } | null => {
 };
 
 function Src({ p }: { p: Provider | "user" }) {
-  return <span className={"srcmark s-" + p} title={p === "user" ? "Your value" : p === "steam" ? "Steam store" : "IGDB.com"}>{p === "user" ? "you" : p === "steam" ? "Steam" : "IGDB"}</span>;
+  return <span className={"src" + (p === "user" ? " you" : "")} title={p === "user" ? "Your value" : p === "steam" ? "Steam store" : "IGDB.com"}>{p === "user" ? "you" : p === "steam" ? "Steam" : "IGDB"}</span>;
 }
 
 export function AboutSection({ game: g }: { game: Game }) {
@@ -71,12 +71,12 @@ export function AboutSection({ game: g }: { game: Game }) {
   const [more, setMore] = useState(false);
   if (!first) {
     return (
-      <details className="sec" open>
+      <details className="dsec" open>
         <summary>About</summary>
         <div className="body">
-          <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
-            No store details yet. {g.steamAppId ? "Run “Update details & covers” on the Steam & metadata screen." : "Link this game under “Sources & artwork” below, or run a sync from the Steam & metadata screen."}
-          </div>
+          <span className="meta">
+            No store details yet. Use “Refresh details” under Launchers and store links below, or the Library check-up.
+          </span>
         </div>
       </details>
     );
@@ -93,17 +93,17 @@ export function AboutSection({ game: g }: { game: Game }) {
   const ttb = i?.timeToBeat;
   const appid = g.meta.steam?.providerId;
   return (
-    <details className="sec" open>
+    <details className="dsec" open>
       <summary>
-        About <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>from {[s && "Steam", i && "IGDB"].filter(Boolean).join(" + ")}</span>
+        About <span className="hint">from {[s && "Steam", i && "IGDB"].filter(Boolean).join(" and ")}</span>
       </summary>
       <div className="body">
         {desc && (
-          <p className={"about-desc" + (more ? " open" : "")} onClick={() => setMore(true)}>
+          <p className={"about" + (more ? " open" : "")} onClick={() => setMore(true)} title={more ? undefined : "Show all"}>
             {desc} <Src p={descSrc} />
           </p>
         )}
-        <dl className="kv facts">
+        <dl className="kv">
           {(g.releaseYear || date) && (
             <>
               <dt>Released</dt>
@@ -151,27 +151,27 @@ export function AboutSection({ game: g }: { game: Game }) {
               <dt>Time to beat</dt>
               <dd>
                 {[ttb.main && `rushed ~${ttb.main}h`, ttb.extras && `normal ~${ttb.extras}h`, ttb.complete && `100% ~${ttb.complete}h`].filter(Boolean).join(" · ")}{" "}
-                <span className="dim" style={{ fontSize: "var(--fs-xs)" }}>({ttb.count ?? "a few"} players reported, IGDB)</span>
+                <span className="muted">({ttb.count ?? "a few"} players reported, IGDB)</span>
               </dd>
             </>
           )}
         </dl>
         {tags.length > 0 && (
-          <div className="steamtags" aria-label="Steam user tags">
-            <span className="mono dim" style={{ fontSize: "var(--fs-xs)" }}>Steam user tags</span>
+          <div className="stack tight" aria-label="Steam user tags">
+            <span className="meta">Steam user tags</span>
             <div className="chips">
               {tags.map((t) => (
-                <span key={t.name} className="chip stag" title={t.weight ? `${t.weight} votes` : undefined}>{t.name}</span>
+                <span key={t.name} className="chip" title={t.weight ? `${t.weight} votes` : undefined}>{t.name}</span>
               ))}
             </div>
           </div>
         )}
-        <div className="row links">
-          {appid && <button className="btn sm" onClick={() => void openExternal(`https://store.steampowered.com/app/${appid}/`)}>Steam store ↗</button>}
-          {i?.pageUrl && /^https:\/\/www\.igdb\.com\//.test(i.pageUrl) && <button className="btn sm" onClick={() => void openExternal(i.pageUrl!)}>IGDB ↗</button>}
-          <button className="btn sm ghost" onClick={() => void openExternal(`https://howlongtobeat.com/?q=${encodeURIComponent(cleanTitle(g.title))}`)}>HowLongToBeat ↗</button>
+        <div className="row">
+          {appid && <button className="btn sm" onClick={() => void openExternal(`https://store.steampowered.com/app/${appid}/`)}>Steam store <Icon name="external" /></button>}
+          {i?.pageUrl && /^https:\/\/www\.igdb\.com\//.test(i.pageUrl) && <button className="btn sm" onClick={() => void openExternal(i.pageUrl!)}>IGDB <Icon name="external" /></button>}
+          <button className="btn sm ghost" onClick={() => void openExternal(`https://howlongtobeat.com/?q=${encodeURIComponent(cleanTitle(g.title))}`)}>HowLongToBeat <Icon name="external" /></button>
         </div>
-        <div className="dim attrib">
+        <div className="meta">
           {s && <>Store data: Steam{g.meta.steam?.fetchedAt ? `, ${fmtDate(g.meta.steam.fetchedAt)}` : ""}. </>}
           {i && <>Game data from IGDB.com{g.meta.igdb?.fetchedAt ? `, ${fmtDate(g.meta.igdb.fetchedAt)}` : ""}. </>}
           Shown as provided; your own edits always win.
@@ -191,16 +191,16 @@ export function PlaytimeRows({ game: g }: { game: Game }) {
         {g.steamPlaytimeMin != null ? (
           <>
             {fmtPlaytime(g.steamPlaytimeMin)}{" "}
-            <span className="dim" style={{ fontSize: "var(--fs-s)" }}>
+            <span className="muted">
               ({src ? STEAM_SOURCE_LABEL[src] : "Steam"}{g.steamSyncedAt ? `, ${fmtDate(g.steamSyncedAt)}` : ""}{g.steamLastPlayed ? `; last played ${g.steamLastPlayed}` : ""})
             </span>
           </>
         ) : (
-          <span className="dim">not imported</span>
+          <span className="muted">not imported</span>
         )}
       </dd>
       <dt>Old REWIND playtime</dt>
-      <dd className="num">{g.importedPlaytimeMin != null ? fmtPlaytime(g.importedPlaytimeMin) : <span className="dim">—</span>}</dd>
+      <dd className="num">{g.importedPlaytimeMin != null ? fmtPlaytime(g.importedPlaytimeMin) : <span className="muted">—</span>}</dd>
     </>
   );
 }
@@ -231,9 +231,7 @@ export function SourcesSection({ game: g }: { game: Game }) {
   const providers: Provider[] = hasIgdb || g.meta.igdb ? ["steam", "igdb"] : ["steam"];
   const coverMine = g.metaSource.coverPath === "user";
   return (
-    <details className="sec" open={!g.meta.steam || g.meta.steam.status !== "linked"}>
-      <summary>Sources &amp; artwork</summary>
-      <div className="body">
+    <>
         {providers.map((p) => {
           const m = g.meta[p];
           const status = !m ? "not looked up yet" : m.status === "linked" ? `linked${m.providerId ? ` (${p === "steam" ? "app" : "id"} ${m.providerId})` : ""}` : m.status === "review" ? "needs you to pick a match" : m.status === "none" ? (m.method === "user" ? "you said it isn't there" : "not found") : "couldn't be fetched";
@@ -242,11 +240,11 @@ export function SourcesSection({ game: g }: { game: Game }) {
             <div key={p} className="srcrow">
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <span>
-                  <b>{PROVIDER_LABEL[p]}</b> <span className="dim">· {status}{how ? ` · ${how}` : ""}</span>
-                  {m?.status === "linked" && m.data?.name && cleanTitle(m.data.name) !== cleanTitle(g.title) && <span className="dim"> · listed as “{cleanTitle(m.data.name)}”</span>}
+                  <b>{PROVIDER_LABEL[p]}</b> <span className="muted">· {status}{how ? ` · ${how}` : ""}</span>
+                  {m?.status === "linked" && m.data?.name && cleanTitle(m.data.name) !== cleanTitle(g.title) && <span className="muted"> · listed as “{cleanTitle(m.data.name)}”</span>}
                 </span>
               </div>
-              {m?.error && <div className="note" style={{ fontSize: "var(--fs-s)" }}>{m.error}</div>}
+              {m?.error && <div className="note">{m.error}</div>}
               <div className="row">
                 <button className="btn sm" onClick={() => setPicking(picking === p ? null : p)} aria-expanded={picking === p}>
                   {m?.status === "linked" ? "Change match…" : "Find match…"}
@@ -286,13 +284,13 @@ export function SourcesSection({ game: g }: { game: Game }) {
         })}
         <div className="row">
           <button className="btn sm" disabled={sync.running} onClick={() => void refresh()} title="Fetch this game's store details and cover again">
-            <Icon name="download" /> {sync.running && sync.scope === "games" ? "Refreshing…" : "Refresh details & cover"}
+            <Icon name="refresh" /> {sync.running && sync.scope === "games" ? "Refreshing…" : "Refresh details"}
           </button>
         </div>
         <div className="srcrow">
           <div>
             <b>Cover</b>{" "}
-            <span className="dim">
+            <span className="muted">
               · {coverMine ? "your own picture" : g.metaSource.cover ? `${g.metaSource.cover.startsWith("steam") ? "Steam" : "IGDB"}${g.metaSource.cover.endsWith("landscape") ? " store header (no portrait cover exists)" : ""}` : "none yet"}
             </span>
           </div>
@@ -313,7 +311,6 @@ export function SourcesSection({ game: g }: { game: Game }) {
             )}
           </div>
         </div>
-      </div>
-    </details>
+    </>
   );
 }

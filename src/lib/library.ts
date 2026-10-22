@@ -1,5 +1,5 @@
 import { cleanTitle, searchKey } from "./canon.ts";
-import type { Game, LengthKind, Ownership, Status } from "./types.ts";
+import type { Game, LauncherId, LengthKind, Ownership, Status } from "./types.ts";
 import { lastPlayedAny, playtimeMin, progressState } from "../rec/progress.ts";
 
 const UNVERIFIED = new Set(["legacy_table", "ai_estimate"]);
@@ -55,12 +55,73 @@ export interface LibraryFilters {
   length: LengthBucket | "all";
   tag: string;
   favorite: boolean;
-  collectionId: string;
+  /** Only games in your Up Next queue (the ids are passed to filterGames). */
+  upNext: boolean;
+  /** Where you own it: a launcher, "none" = no launcher recorded. */
+  launcher: LauncherId | "all" | "none";
+  genre: string;
+  playtime: PlaytimeBucket | "any";
+  rating: "any" | "unrated" | "3" | "4" | "5";
   hideMultiplayer: boolean;
   progress: "any" | "not_started" | "started" | "finished";
   needsInfo: boolean;
   /** Artwork / outside metadata state. */
   meta: MetaFilter;
+}
+
+export type PlaytimeBucket = "none" | "lt2" | "2to10" | "10to40" | "40plus";
+export const PLAYTIME_FILTERS: { id: PlaytimeBucket | "any"; label: string }[] = [
+  { id: "any", label: "Any playtime" },
+  { id: "none", label: "Never played" },
+  { id: "lt2", label: "Under 2h" },
+  { id: "2to10", label: "2–10h" },
+  { id: "10to40", label: "10–40h" },
+  { id: "40plus", label: "40h+" },
+];
+export function playtimeBucket(g: Game): PlaytimeBucket {
+  const m = playtimeMin(g) ?? 0;
+  if (m < 1) return "none";
+  if (m < 120) return "lt2";
+  if (m < 600) return "2to10";
+  if (m < 2400) return "10to40";
+  return "40plus";
+}
+
+export const RATING_FILTERS: { id: LibraryFilters["rating"]; label: string }[] = [
+  { id: "any", label: "Any rating" },
+  { id: "5", label: "★★★★★ only" },
+  { id: "4", label: "★★★★ and up" },
+  { id: "3", label: "★★★ and up" },
+  { id: "unrated", label: "Not rated" },
+];
+
+/** Genres from linked store data (Steam and IGDB), deduplicated. Never invented. */
+export function genresOf(g: Game): string[] {
+  const out = new Map<string, string>();
+  for (const d of [g.meta.steam?.status === "linked" ? g.meta.steam.data : null, g.meta.igdb?.status === "linked" ? g.meta.igdb.data : null]) {
+    for (const x of d?.genres ?? []) {
+      const k = x.trim().toLowerCase();
+      if (k && !out.has(k)) out.set(k, x.trim());
+    }
+  }
+  return [...out.values()];
+}
+
+export function allGenres(games: Game[]): { genre: string; count: number }[] {
+  const m = new Map<string, number>();
+  for (const g of games) for (const x of genresOf(g)) m.set(x, (m.get(x) ?? 0) + 1);
+  return [...m.entries()].map(([genre, count]) => ({ genre, count })).sort((a, b) => b.count - a.count || a.genre.localeCompare(b.genre));
+}
+
+/** Launchers a game is recorded on (Steam also counts from the old storefront field). */
+export function launchersOf(g: Game): LauncherId[] {
+  const s = new Set<LauncherId>(g.sources.map((x) => x.source));
+  if (/steam/i.test(g.storefront ?? "")) s.add("steam");
+  if (/epic/i.test(g.storefront ?? "")) s.add("epic");
+  if (/ubisoft|uplay/i.test(g.storefront ?? "")) s.add("ubisoft");
+  if (/rockstar/i.test(g.storefront ?? "")) s.add("rockstar");
+  if (/gog/i.test(g.storefront ?? "")) s.add("gog");
+  return [...s];
 }
 
 export type MetaFilter = "any" | "has_cover" | "no_cover" | "linked" | "review" | "not_found" | "not_linked";
@@ -108,7 +169,11 @@ export const DEFAULT_FILTERS: LibraryFilters = {
   length: "all",
   tag: "",
   favorite: false,
-  collectionId: "",
+  upNext: false,
+  launcher: "all",
+  genre: "",
+  playtime: "any",
+  rating: "any",
   hideMultiplayer: false,
   progress: "any",
   needsInfo: false,
@@ -121,7 +186,7 @@ export function filterGames(
   games: Game[],
   f: LibraryFilters,
   allowUnverified: boolean,
-  collectionMembers?: Set<string>,
+  upNextIds?: Set<string>,
 ): Game[] {
   const terms = searchKey(f.query).split(" ").filter(Boolean);
   return games.filter((g) => {
@@ -130,7 +195,14 @@ export function filterGames(
     if (f.favorite && !g.favorite) return false;
     if (f.hideMultiplayer && (g.multiplayer === "mp_required" || g.multiplayer === "coop_focused")) return false;
     if (f.tag && !g.tags.some((t) => t.tag === f.tag)) return false;
-    if (collectionMembers && !collectionMembers.has(g.id)) return false;
+    if (f.upNext && !upNextIds?.has(g.id)) return false;
+    if (f.launcher !== "all") {
+      const ls = launchersOf(g);
+      if (f.launcher === "none" ? ls.length > 0 : !ls.includes(f.launcher)) return false;
+    }
+    if (f.genre && !genresOf(g).some((x) => x.toLowerCase() === f.genre.toLowerCase())) return false;
+    if (f.playtime !== "any" && playtimeBucket(g) !== f.playtime) return false;
+    if (f.rating !== "any" && (f.rating === "unrated" ? g.rating != null : (g.rating ?? 0) < Number(f.rating))) return false;
     if (f.length !== "all" && lengthBucket(g, allowUnverified) !== f.length) return false;
     if (f.needsInfo && g.tags.length > 0 && displayLength(g, allowUnverified)) return false;
     if (f.progress !== "any") {
@@ -141,7 +213,7 @@ export function filterGames(
     if (f.meta !== "any" && !metaFilterMatch(g, f.meta)) return false;
     if (terms.length) {
       const people = [g.developer, g.publisher, ...companies(g)].filter(Boolean).join(" ");
-      const hay = searchKey(g.title) + " " + g.tags.map((t) => t.tag).join(" ") + " " + searchKey(g.notes) + " " + searchKey(people);
+      const hay = searchKey(g.title) + " " + g.tags.map((t) => t.tag).join(" ") + " " + searchKey(g.notes) + " " + searchKey(people) + " " + searchKey(genresOf(g).join(" "));
       if (!terms.every((t) => hay.includes(t))) return false;
     }
     return true;
@@ -243,4 +315,10 @@ export function allTags(games: Game[]): { tag: string; count: number }[] {
   const m = new Map<string, number>();
   for (const g of games) for (const t of g.tags) m.set(t.tag, (m.get(t.tag) ?? 0) + 1);
   return [...m.entries()].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+}
+
+/** Filters that are on, apart from the search box and status (shown as removable chips). */
+export function activeFilters(f: LibraryFilters): (keyof LibraryFilters)[] {
+  const d = DEFAULT_FILTERS;
+  return (Object.keys(d) as (keyof LibraryFilters)[]).filter((k) => k !== "query" && k !== "status" && f[k] !== d[k]);
 }

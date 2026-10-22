@@ -1,5 +1,5 @@
-// Records kept by the modding companion. All of it is your own information: REWIND
-// never reads or writes game folders or mod-manager files on its own.
+// Records kept by REWIND 4's modding companion. The feature was removed in REWIND 5, but your
+// records stay in the database and in backups, and can be exported (Settings → Data).
 
 export type ProfileStatus = "planning" | "active" | "paused" | "finished" | "retired";
 export const PROFILE_STATUSES: { id: ProfileStatus; label: string }[] = [

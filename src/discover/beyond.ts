@@ -372,6 +372,7 @@ export function extToGame(e: ExtGame, nowIso = new Date().toISOString()): Game {
     updatedAt: nowIso,
     tags,
     lengths,
+    sources: [],
     meta: { igdb: { gameId: `igdb:${e.igdbId}`, provider: "igdb", providerId: String(e.igdbId), status: "linked", method: "discover", confidence: 1, data: meta, candidates: [], rejected: [], error: null, fetchedAt: nowIso, updatedAt: nowIso } },
   };
 }
@@ -404,7 +405,7 @@ export function libraryIndex(games: Game[]): LibraryIndex {
 
 export function describeBeyondError(e: unknown): string {
   if (e instanceof NetError) {
-    if (e.kind === "auth") return "IGDB (Twitch) refused your Client ID or Secret. Check them under Steam & metadata → Connections.";
+    if (e.kind === "auth") return "IGDB (Twitch) refused your Client ID or Secret. Check them in Settings → Connections → IGDB.";
     if (e.kind === "offline") return "You're offline. Showing the last results REWIND saved.";
     if (e.kind === "rate_limited") return "IGDB asked REWIND to slow down. Try again in a minute.";
     if (e.kind === "cancelled") return "Stopped.";

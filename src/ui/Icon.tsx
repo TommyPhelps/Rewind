@@ -30,6 +30,16 @@ const P: Record<string, string> = {
   sidebar: "M3 4h18v16H3zM9 4v16",
   edit: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
   rewind: "M3 5v14M20 5l-8 7 8 7zM12 5 4 12l8 7z",
+  more: "M4.5 11h2v2h-2zM11 11h2v2h-2zM17.5 11h2v2h-2z",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",
+  stop: "M6 6h12v12H6z",
+  refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
+  link: "M10 14l4-4M8.5 11.5 6 14a3.5 3.5 0 0 0 5 5l2.5-2.5M15.5 12.5 18 10a3.5 3.5 0 0 0-5-5l-2.5 2.5",
+  filter: "M3 5h18l-7 8v6l-4 2v-8z",
+  queue: "M4 6h12M4 12h12M4 18h8M18 15v6M15 18h6",
+  external: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+  check2: "M4 12.5 9.5 18 20 6",
+  shield: "M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z",
 };
 
 export function Icon({ name, className, title }: { name: keyof typeof P | string; className?: string; title?: string }) {
@@ -45,10 +55,10 @@ export function Icon({ name, className, title }: { name: keyof typeof P | string
 export function Logo() {
   return (
     <svg viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="1" y="1" width="30" height="30" fill="var(--panel2)" stroke="var(--accent)" strokeWidth="1.5" />
-      <rect x="7" y="10" width="2" height="12" fill="var(--title-fg)" />
-      <path d="M10 16l7-6v12z" fill="var(--title-fg)" />
-      <path d="M17 16l7-6v12z" fill="var(--accent)" />
+      <rect x="1" y="1" width="30" height="30" fill="none" stroke="var(--border-strong)" strokeWidth="1.5" />
+      <rect x="7" y="10" width="2" height="12" fill="var(--text)" />
+      <path d="M10 16l7-6v12z" fill="var(--text)" />
+      <path d="M17 16l7-6v12z" fill="var(--text-2)" />
     </svg>
   );
 }

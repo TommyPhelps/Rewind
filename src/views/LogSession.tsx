@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../state/store.tsx";
 import { Modal } from "../ui/Overlays.tsx";
 import { cleanTitle } from "../lib/canon.ts";
 import { todayIso } from "../db/repo.ts";
+import { fmtMinutes } from "../ui/bits.tsx";
 
-/** Records a play session you tell it about. Nothing is ever logged automatically. */
+/** Records a play session: one you type in, or one REWIND timed from Play to Stop. */
 export function LogSessionDialog() {
-  const { logFor, setLogFor, games, gameById, repo, run, reloadAll, toast } = useApp();
+  const { logFor, setLogFor, games, gameById, repo, run, reloadAll, toast, discardTimer, timer } = useApp();
   const [gameId, setGameId] = useState<string>("");
   const [date, setDate] = useState(todayIso());
   const [minutes, setMinutes] = useState("");
@@ -15,7 +16,13 @@ export function LogSessionDialog() {
     const order = { playing: 0, paused: 1, replay: 2, backlog: 3, completed: 4, dropped: 5, not_interested: 6 } as Record<string, number>;
     return [...games].sort((a, b) => order[a.status] - order[b.status] || a.title.localeCompare(b.title));
   }, [games]);
+  useEffect(() => {
+    if (!logFor) return;
+    setMinutes(logFor.minutes != null ? String(logFor.minutes) : "");
+    setDate(logFor.date && logFor.date <= todayIso() ? logFor.date : todayIso());
+  }, [logFor]);
   if (!logFor) return null;
+  const timed = logFor.source === "timed";
   const id = logFor.gameId ?? gameId;
   const g = id ? gameById.get(id) : undefined;
   const close = () => {
@@ -27,33 +34,49 @@ export function LogSessionDialog() {
   };
   const save = async () => {
     if (!g) return;
-    const m = minutes.trim() === "" ? null : Math.max(1, Math.round(Number(minutes)));
+    const m = minutes.trim() === "" ? null : Math.max(1, Math.min(1439, Math.round(Number(minutes))));
     if (m != null && !Number.isFinite(m)) return;
     const ok = await run(async () => {
-      await repo.addSession(g.id, date, m, note.trim());
+      await repo.addSession(g.id, date, m, note.trim(), timed ? "timed" : "manual");
       await reloadAll();
       return true;
     });
     if (ok) {
-      toast(`Logged a session of ${cleanTitle(g.title)}.`);
+      if (timed && timer?.gameId === g.id) await discardTimer();
+      toast(`Logged ${m ? fmtMinutes(m) + " of " : "a session of "}${cleanTitle(g.title)}.`);
       close();
     }
   };
   return (
     <Modal
-      title="Log a play session"
+      title={timed ? "Log this session" : "Log a play session"}
       onClose={close}
       footer={
         <>
-          <button className="btn" onClick={close}>Cancel</button>
-          <button className="btn primary" onClick={save} disabled={!g}>Save session</button>
+          {timed && (
+            <button
+              className="btn ghost"
+              onClick={async () => {
+                await discardTimer();
+                close();
+              }}
+              title="Stop the timer without saving a session"
+            >
+              Discard
+            </button>
+          )}
+          <span className="spacer" />
+          <button className="btn" onClick={close}>
+            {timed ? "Keep timing" : "Cancel"}
+          </button>
+          <button className="btn primary" onClick={() => void save()} disabled={!g}>
+            Save session
+          </button>
         </>
       }
     >
       {logFor.gameId ? (
-        <div>
-          <b>{g ? cleanTitle(g.title) : "?"}</b>
-        </div>
+        <b>{g ? cleanTitle(g.title) : "?"}</b>
       ) : (
         <label className="lbl">
           Game
@@ -68,6 +91,7 @@ export function LogSessionDialog() {
           </select>
         </label>
       )}
+      {timed && <span className="meta">Timed from when you pressed Play. Adjust the minutes if you stepped away.</span>}
       <div className="form2">
         <label className="lbl">
           Date
@@ -80,11 +104,9 @@ export function LogSessionDialog() {
       </div>
       <label className="lbl">
         Note (optional)
-        <input className="field" placeholder="Where you got to, what's next…" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+        <input className="field" placeholder="Where you got to, what's next…" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void save()} />
       </label>
-      <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
-        Only sessions you log appear in Activity. Imported playtime stays separate and is never turned into sessions.
-      </div>
+      <span className="meta">Sessions appear in Activity, where you can correct them later. Launcher playtime is kept separately and never turned into sessions.</span>
     </Modal>
   );
 }

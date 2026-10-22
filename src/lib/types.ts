@@ -93,6 +93,38 @@ export interface GameTag {
   source: string;
 }
 
+/** Launchers / stores REWIND knows about. */
+export type LauncherId = "steam" | "epic" | "ubisoft" | "rockstar" | "gog" | "other";
+export const LAUNCHERS: { id: LauncherId; label: string }[] = [
+  { id: "steam", label: "Steam" },
+  { id: "epic", label: "Epic Games" },
+  { id: "ubisoft", label: "Ubisoft Connect" },
+  { id: "rockstar", label: "Rockstar Games" },
+  { id: "gog", label: "GOG" },
+  { id: "other", label: "Other" },
+];
+export const LAUNCHER_LABEL: Record<LauncherId, string> = Object.fromEntries(LAUNCHERS.map((l) => [l.id, l.label])) as Record<LauncherId, string>;
+
+/** One place you own or have installed a game. */
+export interface GameSource {
+  source: LauncherId;
+  /** The launcher's own id (Steam app id, Epic app name, Ubisoft install id…). */
+  externalId: string;
+  /** The name the launcher uses. */
+  title: string;
+  /** Installed as of the last scan (null = unknown). */
+  installed: boolean | null;
+  installPath: string | null;
+  /** A launcher link REWIND may open to start the game (steam://, com.epicgames.launcher://, uplay://). */
+  launch: string | null;
+  /** How REWIND learned it: steam_import, local_scan, manual, migrated. */
+  method: string;
+  /** Minutes the launcher reports, only when it reports them. */
+  playtimeMin: number | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
 export interface Game {
   id: string;
   title: string;
@@ -132,6 +164,8 @@ export interface Game {
   updatedAt: string;
   tags: GameTag[];
   lengths: GameLength[];
+  /** Where you own or have installed it (one row per launcher). */
+  sources: GameSource[];
   /** Outside metadata (Steam / IGDB), if any has been looked up. */
   meta: Partial<Record<import("../meta/types.ts").Provider, import("../meta/types.ts").MetaRecord>>;
 }
@@ -153,15 +187,6 @@ export interface EventRow {
   data: Record<string, unknown>;
 }
 
-export type ThemeId = "midnight" | "classic" | "amber" | "gothic" | "mono";
-export const THEMES: { id: ThemeId; label: string; note: string }[] = [
-  { id: "midnight", label: "Midnight 2003", note: "Dark navy, steel blue, silver" },
-  { id: "classic", label: "Nook Classic", note: "Near-black, muted green, charcoal" },
-  { id: "amber", label: "CRT Amber", note: "Black, charcoal, amber" },
-  { id: "gothic", label: "Gothic Library", note: "Dark brown, burgundy, antique gold" },
-  { id: "mono", label: "Monochrome", note: "Black, gray, white" },
-];
-
 export interface GamingProfile {
   enjoyed: string[];
   values: string[];
@@ -170,17 +195,11 @@ export interface GamingProfile {
   excludeMultiplayerDependent: boolean;
 }
 
-export type Density = "compact" | "comfortable" | "spacious";
-export const DENSITIES: { id: Density; label: string; note: string }[] = [
-  { id: "compact", label: "Compact", note: "More rows on screen" },
-  { id: "comfortable", label: "Comfortable", note: "Default" },
-  { id: "spacious", label: "Spacious", note: "Bigger text and targets" },
-];
+export type ScanLauncher = "epic" | "ubisoft" | "rockstar";
 
 export interface AppSettings {
-  theme: ThemeId;
-  density: Density;
-  uiScale: number; // 0.9 - 1.5
+  /** Text size on top of Windows display scaling (0.9 – 1.3). */
+  uiScale: number;
   sidebarCollapsed: boolean;
   libraryView: "table" | "grid";
   /** Cover size in the grid. */
@@ -189,18 +208,31 @@ export interface AppSettings {
   listCovers: boolean;
   detailWidth: number;
   useUnverifiedLengths: boolean;
-  lowStimulation: boolean;
+  /** Launchers you allowed REWIND to look at on this PC (asked once, changeable in Connections). */
+  launcherAccess: Partial<Record<ScanLauncher, boolean>>;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: "midnight",
-  density: "comfortable",
   uiScale: 1,
   sidebarCollapsed: false,
   libraryView: "table",
   gridSize: "m",
   listCovers: true,
-  detailWidth: 400,
+  detailWidth: 440,
   useUnverifiedLengths: true,
-  lowStimulation: false,
+  launcherAccess: {},
 };
+
+/** Saved settings from any version: unknown keys (old themes, density) are dropped. */
+export function normalizeSettings(raw: Partial<AppSettings> & Record<string, unknown>): AppSettings {
+  const s = { ...DEFAULT_SETTINGS };
+  if (typeof raw.uiScale === "number" && raw.uiScale >= 0.85 && raw.uiScale <= 1.5) s.uiScale = Math.min(1.3, raw.uiScale);
+  if (typeof raw.sidebarCollapsed === "boolean") s.sidebarCollapsed = raw.sidebarCollapsed;
+  if (raw.libraryView === "grid" || raw.libraryView === "table") s.libraryView = raw.libraryView;
+  if (raw.gridSize === "s" || raw.gridSize === "m" || raw.gridSize === "l") s.gridSize = raw.gridSize;
+  if (typeof raw.listCovers === "boolean") s.listCovers = raw.listCovers;
+  if (typeof raw.detailWidth === "number") s.detailWidth = Math.max(340, Math.min(760, raw.detailWidth));
+  if (typeof raw.useUnverifiedLengths === "boolean") s.useUnverifiedLengths = raw.useUnverifiedLengths;
+  if (raw.launcherAccess && typeof raw.launcherAccess === "object") s.launcherAccess = { ...(raw.launcherAccess as AppSettings["launcherAccess"]) };
+  return s;
+}

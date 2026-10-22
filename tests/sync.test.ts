@@ -246,7 +246,7 @@ test("upgrading a 2.5 (schema v2) library to v3 keeps every game, note, queue an
 
   const repo = new Repo(db);
   const applied = await repo.init();
-  assert.deepEqual(applied, [3, 4]);
+  assert.deepEqual(applied, [3, 4, 5]);
   const after = await db.select<Record<string, unknown>>(`SELECT id, title, notes, rating, status, imported_playtime_min FROM games ORDER BY id`);
   assert.deepEqual(after, before);
   const games = await repo.loadGames();

@@ -4,9 +4,10 @@ import { STATUSES, SOURCE_LABEL, type Game, type Status } from "../lib/types.ts"
 import { Icon } from "./Icon.tsx";
 import { artSrc } from "../platform/native.ts";
 
+/** Status as quiet text with a small square mark (shape and grey level differ per status). */
 export function StatusPill({ status }: { status: Status }) {
   const s = STATUSES.find((x) => x.id === status)!;
-  return <span className={"st st-" + status}>{s.label}</span>;
+  return <span className={"status st-" + status}>{s.label}</span>;
 }
 
 /**
@@ -58,10 +59,10 @@ export function Thumb({ file, className }: { file: string | null; className?: st
 
 export function Stars({ value, onChange }: { value: number | null; onChange?(v: number | null): void }) {
   if (!onChange) {
-    return value ? <span className="rating ro" aria-label={`${value} of 5`}>{"★".repeat(value)}</span> : <span className="dim">—</span>;
+    return value ? <span className="stars ro" aria-label={`${value} of 5`}>{"★".repeat(value)}</span> : <span className="muted">—</span>;
   }
   return (
-    <span className="rating" role="radiogroup" aria-label="Your rating">
+    <span className="stars" role="radiogroup" aria-label="Your rating">
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
@@ -82,8 +83,8 @@ export function Stars({ value, onChange }: { value: number | null; onChange?(v: 
 export function SourceBadge({ source }: { source: string }) {
   const est = source === "legacy_table" || source === "legacy" || source === "ai_estimate" || source === "reference";
   return (
-    <span className={"badge" + (est ? " est" : source === "user" ? " you" : "")} title={SOURCE_LABEL[source === "legacy" ? "legacy_table" : source] ?? source}>
-      {source === "user" ? "you" : est ? "est." : source}
+    <span className={"src" + (source === "user" ? " you" : "")} title={SOURCE_LABEL[source === "legacy" ? "legacy_table" : source] ?? source}>
+      {source === "user" ? "you" : est ? "estimate" : source === "steam" ? "Steam" : source === "igdb" ? "IGDB" : source}
     </span>
   );
 }
@@ -134,6 +135,41 @@ export function CommitInput({
       }}
     />
   );
+}
+
+/** Favourite toggle (a star outline that fills in). */
+export function FavButton({ on, onToggle }: { on: boolean; onToggle(): void }) {
+  return (
+    <button className={"favbtn" + (on ? " on" : "")} onClick={onToggle} aria-pressed={on} aria-label={on ? "Remove from favourites" : "Add to favourites"} title={on ? "Favourite" : "Add to favourites"}>
+      <Icon name="star" />
+    </button>
+  );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "Today", "Yesterday", "Mon 19 Oct", or "19 Oct 2025" for other years. */
+export function fmtDay(iso: string, now = new Date()): string {
+  const d = new Date(iso.length === 10 ? iso + "T12:00:00" : iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const key = (x: Date) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (key(d) === key(now)) return "Today";
+  if (key(d) === key(y)) return "Yesterday";
+  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+  return d.getFullYear() === now.getFullYear() ? `${day} ${d.getDate()} ${MONTHS[d.getMonth()]}` : `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+export function fmtClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || iso.length === 10) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+export function fmtMinutes(m: number | null | undefined): string {
+  if (m == null) return "—";
+  return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`;
 }
 
 export function fmtDate(iso: string | null | undefined): string {

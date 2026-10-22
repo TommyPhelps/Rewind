@@ -10,6 +10,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { availableMonitors, getCurrentWindow } from "@tauri-apps/api/window";
 import type { SqlDriver, SqlValue, Statement } from "../db/driver.ts";
 import type { ArtFile, HttpRequest, HttpResponse, Transport } from "../meta/http.ts";
+import type { RawLauncherScan } from "../launchers/scan.ts";
+import type { LauncherId } from "../lib/types.ts";
 
 export const inDesktopApp = (): boolean =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in (window as unknown as Record<string, unknown>);
@@ -67,28 +69,7 @@ export async function saveJsonFile(title: string, defaultName: string, text: str
   return path;
 }
 
-/** Open dialog for a plain-text list (mod lists). The file is only read, never changed. */
-export async function pickTextFile(title: string): Promise<{ path: string; text: string } | null> {
-  if (!inDesktopApp()) {
-    return new Promise((resolve) => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = ".txt,.md,.csv,text/plain";
-      input.onchange = async () => {
-        const f = input.files?.[0];
-        resolve(f ? { path: f.name, text: await f.text() } : null);
-      };
-      input.click();
-    });
-  }
-  const path = await openDialog({ title, multiple: false, directory: false, filters: [{ name: "Text lists", extensions: ["txt", "md", "csv"] }, { name: "All files", extensions: ["*"] }] });
-  if (!path || Array.isArray(path)) return null;
-  const text = await invoke<string>("read_text_file", { path });
-  if (text.length > 5_000_000) throw new Error("That file is too large to be a mod list.");
-  return { path, text };
-}
-
-/** Save dialog for a text export (e.g. a mod list as Markdown). */
+/** Save dialog for a text export (e.g. the old modding records as Markdown). */
 export async function saveTextFile(title: string, defaultName: string, text: string, filterName: string, ext: string): Promise<string | null> {
   if (!inDesktopApp()) {
     const a = document.createElement("a");
@@ -262,4 +243,53 @@ export async function steamLocalScan(dir?: string): Promise<SteamLocalScan> {
     return j.result as SteamLocalScan;
   }
   return invoke<SteamLocalScan>("steam_local_scan", { dir: dir ?? null });
+}
+
+async function devCall<T>(op: string, body: unknown): Promise<T> {
+  const r = await fetch(`/__rewind_dev/${op}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error ?? "dev bridge error");
+  return j.result as T;
+}
+
+// ---------- other launchers (only after you allowed it in Settings → Connections) ----------
+
+/** Reads what Epic / Ubisoft Connect / Rockstar keep on this PC about installed games. Read-only. */
+export async function launcherScan(which: Exclude<LauncherId, "steam">[]): Promise<RawLauncherScan> {
+  if (!which.length) throw new Error("No launchers chosen.");
+  if (!inDesktopApp()) return devCall<RawLauncherScan>("launchers", { which });
+  return invoke<RawLauncherScan>("launcher_scan", { which });
+}
+
+/** Asks Windows to open a launcher link; the launcher starts the game. */
+export async function launchGame(uri: string): Promise<void> {
+  if (!inDesktopApp()) return void (await devCall("launch", { uri }));
+  await invoke("launch_game", { uri });
+}
+
+/** A full copy of the database file in the backups folder (used before upgrades). */
+export async function snapshotDatabase(label: string): Promise<string> {
+  if (!inDesktopApp()) return devCall<string>("snapshot", { label });
+  return invoke<string>("db_snapshot", { label });
+}
+
+/** Windows DPAPI: encrypts a stored key so only your Windows account can read it. */
+export async function protectSecret(value: string): Promise<string> {
+  if (!inDesktopApp()) return value;
+  return invoke<string>("secret_protect", { plain: value });
+}
+
+export async function unprotectSecret(value: string): Promise<string> {
+  if (!inDesktopApp()) return value;
+  return invoke<string>("secret_unprotect", { stored: value });
+}
+
+/** CI start-up check; does nothing unless the app was started for one. */
+export async function smokeReport(report: Record<string, unknown>): Promise<void> {
+  if (!inDesktopApp()) return;
+  try {
+    await invoke("smoke_report", { report });
+  } catch {
+    // never matters outside CI
+  }
 }

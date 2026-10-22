@@ -43,8 +43,8 @@ export function TasteView({ nav }: { nav: Nav }) {
   const accepts = recEvents.filter((e) => e.kind === "accept");
 
   return (
-    <div className="content pad">
-      <div className="stack" style={{ maxWidth: "80rem" }}>
+    <div>
+      <div className="stack loose">
         <div className="note info">
           This is everything REWIND uses to judge your taste. Enjoyment comes from what you tell it (ratings, favorites, your profile lists,
           finishing or dropping games, and passing on suggestions). Hours played are shown, but they are <b>not</b> treated as enjoyment.
@@ -54,7 +54,7 @@ export function TasteView({ nav }: { nav: Nav }) {
           <div className="hd">
             Time played vs. enjoyment
             <span className="right">
-              <label className="check" style={{ textTransform: "none", letterSpacing: 0 }}>
+              <label className="check">
                 <input type="checkbox" checked={onlyUnknown} onChange={(e) => setOnlyUnknown(e.target.checked)} />
                 only games with no enjoyment info
               </label>
@@ -89,7 +89,7 @@ export function TasteView({ nav }: { nav: Nav }) {
                           <span className="track"><span className="fill" style={{ width: `${(h / maxH) * 100}%` }} /></span>
                           <span className="num">{Math.round(h)}h</span>
                         </td>
-                        <td className={known ? (ev!.value >= 0.2 ? "ok" : ev!.value <= -0.2 ? "bad" : "") : "dim"} style={{ fontSize: "var(--fs-s)" }}>
+                        <td className={known ? (ev!.value >= 0.2 ? "ok" : ev!.value <= -0.2 ? "bad" : "") : "dim"} style={{ fontSize: "var(--fs-meta)" }}>
                           {known ? ev!.parts.filter((p) => p.kind !== "playtime").map((p) => p.label).join("; ") : "Only time spent: enjoyment unknown"}
                         </td>
                         <td>
@@ -156,12 +156,12 @@ export function TasteView({ nav }: { nav: Nav }) {
                   <tr key={t}>
                     <td>{TRAIT_LABEL[t]}</td>
                     <td style={{ width: "11rem" }}>
-                      <span className="pref">
+                      <span className="ptrack">
                         <span className="pref-mid" />
                         <span className={"pref-fill " + (p.value >= 0 ? "pos" : "neg")} style={p.value >= 0 ? { left: "50%", width: `${p.value * 50}%` } : { right: "50%", width: `${-p.value * 50}%` }} />
                       </span>
                     </td>
-                    <td style={{ fontSize: "var(--fs-s)" }}>
+                    <td style={{ fontSize: "var(--fs-meta)" }}>
                       {p.parts.map((x, i) => (
                         <span key={i} className={"why-part s-" + x.source.replace(/ /g, "-")}>
                           {x.source}: {x.label}
@@ -179,7 +179,7 @@ export function TasteView({ nav }: { nav: Nav }) {
         <div className="grid2">
           <div className="panel">
             <div className="hd">Your profile, as REWIND reads it</div>
-            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "var(--fs-s)" }}>
+            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "var(--fs-meta)" }}>
               <div>
                 {taste.profileMatches.map((m) => (
                   <div key={m.list + m.entry} className="pm">
@@ -198,14 +198,11 @@ export function TasteView({ nav }: { nav: Nav }) {
                   </div>
                 ))}
               </div>
-              <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => nav.go("settings")}>
-                Edit profile in Settings
-              </button>
             </div>
           </div>
           <div className="panel">
             <div className="hd">Your history with suggestions</div>
-            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "var(--fs-s)" }}>
+            <div className="bd" style={{ display: "grid", gap: "0.6rem", fontSize: "var(--fs-meta)" }}>
               <dl className="kv">
                 <dt>Suggestions you started</dt>
                 <dd className="num">{accepts.length}</dd>
@@ -216,7 +213,7 @@ export function TasteView({ nav }: { nav: Nav }) {
               </dl>
               {dropCounts.size > 0 ? (
                 <div>
-                  <div className="mono dim" style={{ fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Why you've dropped games</div>
+                  <div className="meta">Why you've dropped games</div>
                   {[...dropCounts.entries()].sort((a, b) => b[1] - a[1]).map(([r, n]) => (
                     <div key={r} className="row" style={{ justifyContent: "space-between" }}>
                       <span>{REASONS[r]?.label ?? r}</span>
@@ -238,10 +235,10 @@ export function TasteView({ nav }: { nav: Nav }) {
 function AffBars({ items }: { items: { label: string; v: number }[] }) {
   if (!items.length) return <div className="dim">Not enough information yet.</div>;
   return (
-    <div className="bars">
+    <div className="affs">
       {items.map((x) => (
-        <div className="bar" key={x.label}>
-          <span className="mono">{x.label}</span>
+        <div className="aff" key={x.label}>
+          <span>{x.label}</span>
           <div className="track">
             <div className={"fill" + (x.v < 0 ? " neg" : "")} style={{ width: `${Math.min(100, Math.abs(x.v) * 100)}%` }} />
           </div>

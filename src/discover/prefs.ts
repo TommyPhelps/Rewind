@@ -51,6 +51,8 @@ export interface DiscoverPrefs {
   includeReplays: boolean;
   /** Base number of days a "Not interested" answer hides something. */
   hideDays: number;
+  /** Keep series in order: a sequel waits until you've played the earlier game. */
+  seriesOrder: boolean;
 }
 
 export const DEFAULT_DISCOVER_PREFS: DiscoverPrefs = {
@@ -64,6 +66,7 @@ export const DEFAULT_DISCOVER_PREFS: DiscoverPrefs = {
   longMinHours: 35,
   includeReplays: true,
   hideDays: 90,
+  seriesOrder: true,
 };
 
 const clampInt = (v: unknown, lo: number, hi: number, d: number) => {
@@ -93,5 +96,6 @@ export function normalizePrefs(raw: unknown): DiscoverPrefs {
     longMinHours: clampInt(r.longMinHours, 15, 150, d.longMinHours),
     includeReplays: typeof r.includeReplays === "boolean" ? r.includeReplays : d.includeReplays,
     hideDays: clampInt(r.hideDays, 7, 365, d.hideDays),
+    seriesOrder: typeof r.seriesOrder === "boolean" ? r.seriesOrder : d.seriesOrder,
   };
 }

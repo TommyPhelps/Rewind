@@ -1,0 +1,167 @@
+/* REWIND design tokens. One theme: near-black, monochrome, flat, square.
+   Documented in docs/DESIGN.md — change values there and here together. */
+
+:root {
+  /* Surfaces, darkest to lightest */
+  --deep: #000000; /* inputs, wells, the cover backdrop */
+  --bg: #050505; /* the window */
+  --surface: #101010; /* panels, sidebar, cards */
+  --surface-2: #151515; /* buttons, raised rows */
+  --elevated: #1b1b1b; /* dialogs, menus, toasts */
+  --hover: #202020;
+  --selected: #242424;
+  --border: #292929;
+  --border-strong: #3a3a3a;
+
+  /* Text */
+  --text: #ececec;
+  --text-2: #a6a6a6; /* secondary */
+  --muted: #858585; /* meta, captions, disabled */
+  --accent: #d5d5d5; /* primary buttons, focus, selection marks */
+  --on-accent: #050505;
+
+  /* The only colour, used sparingly for problems and confirmations */
+  --bad: #d39191;
+  --ok: #a7c2a7;
+
+  /* Type */
+  --font: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, "SFMono-Regular", "DejaVu Sans Mono", monospace;
+  --fs-title: 1.7143rem; /* 24px at 100% */
+  --fs-section: 1.2143rem; /* 17px */
+  --fs-lead: 1.0714rem; /* 15px */
+  --fs-body: 1rem; /* 14px */
+  --fs-meta: 0.8929rem; /* 12.5px */
+  --fs-small: 0.8571rem; /* 12px */
+  --lh: 1.45;
+
+  /* Space (4px grid) */
+  --s1: 0.2857rem; /* 4 */
+  --s2: 0.5714rem; /* 8 */
+  --s3: 0.8571rem; /* 12 */
+  --s4: 1.1429rem; /* 16 */
+  --s5: 1.7143rem; /* 24 */
+  --s6: 2.2857rem; /* 32 */
+  --s7: 3.4286rem; /* 48 */
+
+  /* Controls */
+  --ctl: 2.2857rem; /* 32px */
+  --ctl-sm: 2rem; /* 28px */
+  --ctl-lg: 2.5714rem; /* 36px */
+  --row: 2.8571rem; /* 40px list row */
+
+  /* Motion */
+  --fast: 120ms;
+  --med: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  --side: 13rem;
+  --side-collapsed: 3.6rem;
+  --page-max: 92rem;
+  --read-max: 62rem;
+
+  --scale: 1;
+  color-scheme: dark;
+}
+
+html {
+  font-size: calc(14px * var(--scale));
+  background: var(--bg);
+}
+/* Very large windows (4K at 100%): a little more type, still compact. */
+@media (min-width: 2400px) {
+  html {
+    font-size: calc(15px * var(--scale));
+  }
+}
+/* 4K at 100% Windows scaling: type and layout grow as if scaled to about 125%. */
+@media (min-width: 3200px) {
+  html {
+    font-size: calc(18px * var(--scale));
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-radius: 0;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+a:hover {
+  text-decoration-color: var(--text);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

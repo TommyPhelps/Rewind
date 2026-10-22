@@ -1,52 +1,49 @@
+// A game's details: play, status, rating and notes up front; facts next; technical and
+// source information folded away until you want it.
+
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../state/store.tsx";
 import { Icon } from "../ui/Icon.tsx";
-import { CommitInput, Cover, fmtDate, fmtDateTime, SourceBadge, Stars } from "../ui/bits.tsx";
+import { ContextMenu, type MenuItem } from "../ui/Overlays.tsx";
+import { CommitInput, Cover, FavButton, fmtDate, fmtDateTime, fmtDay, SourceBadge, Stars } from "../ui/bits.tsx";
 import { cleanTitle } from "../lib/canon.ts";
-import { effectiveLength, fmtHours } from "../lib/library.ts";
-import {
-  INSTALL,
-  LENGTH_KINDS,
-  MULTIPLAYER,
-  OWNERSHIP,
-  REC_PREFS,
-  SOURCE_LABEL,
-  STATUSES,
-  type EventRow,
-  type Game,
-} from "../lib/types.ts";
+import { companies, effectiveLength, fmtHours, fmtPlaytime, releaseYear } from "../lib/library.ts";
+import { INSTALL, LAUNCHER_LABEL, LENGTH_KINDS, MULTIPLAYER, OWNERSHIP, REC_PREFS, SCALES, SOURCE_LABEL, STATUSES, type EventRow, type Game } from "../lib/types.ts";
 import { openExternal } from "../platform/native.ts";
 import { useTaste } from "../state/recs.ts";
-import { DEFAULT_WEIGHTS, EMPTY_SESSION, BAND_LABEL, recommend } from "../rec/engine.ts";
+import { DEFAULT_WEIGHTS, EMPTY_SESSION, recommend } from "../rec/engine.ts";
+import { explain } from "../rec/explain.ts";
 import { TRAIT_LABEL, TRAITS } from "../rec/traits.ts";
 import { REASONS } from "../rec/taste.ts";
-import { SCALES } from "../lib/types.ts";
 import { AboutSection, Banner, PlaytimeRows, SourcesSection } from "./GameMeta.tsx";
-import { presetById, presetForGame } from "../mods/companion.ts";
-import type { ModProfile } from "../mods/companionTypes.ts";
 import { gameKey, hiddenUntil, MARK_LABEL } from "../discover/marks.ts";
+import { launchTarget } from "../launchers/launch.ts";
 import type { Nav } from "../App.tsx";
 
-export function GameDetail({ id, onClose, nav }: { id: string; onClose(): void; nav?: Nav }) {
-  const { games, gameById, settings, setSettings, updateGame, setLength, setTags, collections, repo, run, reloadCollections, profile, recEvents, setLogFor } = useApp();
-  const { taste, series, marksByGame } = useTaste();
+export function GameDetail({ id, onClose }: { id: string; onClose(): void; nav?: Nav }) {
+  const { gameById, settings, setSettings, updateGame, setLength, setTags, repo, run, reloadAll, confirm, setLogFor, upNextIds, toggleUpNext, timer, play, stopTimer } = useApp();
   const g = gameById.get(id);
   const [width, setWidth] = useState(settings.detailWidth);
   const [dragging, setDragging] = useState(false);
   const [events, setEvents] = useState<EventRow[]>([]);
   const [newTag, setNewTag] = useState("");
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [legacyMods, setLegacyMods] = useState(0);
   const startX = useRef(0);
   const startW = useRef(0);
 
   useEffect(() => {
     void repo.driver
-      .select<Record<string, unknown>>(`SELECT * FROM events WHERE game_id = ? ORDER BY ts DESC, id DESC LIMIT 30`, [id])
+      .select<Record<string, unknown>>(`SELECT * FROM events WHERE game_id = ? ORDER BY ts DESC, id DESC LIMIT 40`, [id])
       .then((rows) => setEvents(rows.map((r) => ({ id: Number(r.id), ts: String(r.ts), type: String(r.type), gameId: id, data: JSON.parse(String(r.data || "{}")) }))));
   }, [id, repo, g?.updatedAt]);
+  useEffect(() => {
+    void repo.driver.select<{ n: number }>(`SELECT COUNT(*) AS n FROM mod_profiles WHERE game_id = ?`, [id]).then((r) => setLegacyMods(Number(r[0]?.n ?? 0))).catch(() => setLegacyMods(0));
+  }, [id, repo]);
 
   useEffect(() => {
     if (!dragging) return;
-    const move = (e: MouseEvent) => setWidth(Math.max(300, Math.min(720, startW.current + (startX.current - e.clientX))));
+    const move = (e: MouseEvent) => setWidth(Math.max(340, Math.min(760, startW.current + (startX.current - e.clientX))));
     const up = () => {
       setDragging(false);
       setSettings({ detailWidth: width });
@@ -61,7 +58,7 @@ export function GameDetail({ id, onClose, nav }: { id: string; onClose(): void; 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector(".shade") && !(e.target as HTMLElement)?.closest?.("input, textarea, select")) onClose();
+      if (e.key === "Escape" && !document.querySelector(".shade, .menu") && !(e.target as HTMLElement)?.closest?.("input, textarea, select")) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -69,11 +66,40 @@ export function GameDetail({ id, onClose, nav }: { id: string; onClose(): void; 
 
   if (!g) return null;
   const set = (patch: Parameters<typeof updateGame>[1]) => void updateGame(g.id, patch);
-  const inCols = new Set(collections.filter((c) => c.gameIds.includes(g.id)).map((c) => c.id));
-  const upNext = collections.find((c) => c.name.toLowerCase() === "up next") ?? null;
+  const target = launchTarget(g);
+  const timing = timer?.gameId === g.id;
+  const queued = upNextIds.indexOf(g.id);
+  const year = releaseYear(g);
+  const dev = g.developer ?? companies(g)[0];
+  const where = [...new Set(g.sources.map((s) => LAUNCHER_LABEL[s.source]))];
+  const meta = [year, dev, where.length ? where.join(", ") : g.storefront].filter(Boolean).join(" · ");
+
+  const moreMenu = (e: { clientX: number; clientY: number }) =>
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: "Log a play session…", icon: "clock", onClick: () => setLogFor({ gameId: g.id }) },
+        { label: g.status === "not_interested" ? "Set back to Backlog" : "Not interested", onClick: () => set({ status: g.status === "not_interested" ? "backlog" : "not_interested" }) },
+        { separator: true },
+        {
+          label: "Remove from library…",
+          icon: "trash",
+          danger: true,
+          onClick: async () => {
+            if (!(await confirm({ title: "Remove from library", danger: true, ok: "Remove", body: <p>Remove <b>{cleanTitle(g.title)}</b> from REWIND, with its notes, tags and history? Nothing is uninstalled.</p> }))) return;
+            await run(async () => {
+              await repo.deleteGames([g.id]);
+              await reloadAll();
+            }, `Removed ${cleanTitle(g.title)}.`);
+            onClose();
+          },
+        },
+      ],
+    });
 
   return (
-    <aside className="detail" style={{ width: `min(${width}px, 46vw)` }} aria-label={`Details for ${cleanTitle(g.title)}`}>
+    <aside className="drawer" style={{ ["--dw" as string]: `${width}px` }} aria-label={`Details for ${cleanTitle(g.title)}`}>
       <div
         className={"resize" + (dragging ? " on" : "")}
         onMouseDown={(e) => {
@@ -83,167 +109,135 @@ export function GameDetail({ id, onClose, nav }: { id: string; onClose(): void; 
           e.preventDefault();
         }}
         onDoubleClick={() => {
-          setWidth(400);
-          setSettings({ detailWidth: 400 });
+          setWidth(440);
+          setSettings({ detailWidth: 440 });
         }}
         title="Drag to resize (double-click to reset)"
         role="separator"
         aria-orientation="vertical"
       />
-      <div className="titlebar" style={{ minHeight: "2.4rem", padding: "0 0.4rem 0 0.85rem" }}>
-        <span className="mono dim" style={{ fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Game details</span>
-        <div className="right">
-          <button className="btn ghost icon sm" onClick={onClose} aria-label="Close details (Esc)" title="Close (Esc)">
-            <Icon name="x" />
-          </button>
-        </div>
+      <div className="drawer-head">
+        <span className="meta">Game details</span>
+        <button className="btn ghost icon sm" onClick={(e) => moreMenu(e)} aria-label="More actions" title="More">
+          <Icon name="more" />
+        </button>
+        <button className="btn ghost icon sm" onClick={onClose} aria-label="Close details (Esc)" title="Close (Esc)">
+          <Icon name="x" />
+        </button>
       </div>
-      <div className="scroll">
+      <div className="drawer-body">
         <Banner game={g} />
-        <div className="dhead">
+        <div className="d-top">
           <Cover game={g} eager />
-          <div style={{ display: "grid", gap: "0.45rem", minWidth: 0 }}>
+          <div className="d-id">
             <TitleEditor game={g} onSave={(title) => set({ title })} />
-            <div className="row" style={{ gap: "0.6rem" }}>
-              <Stars value={g.rating} onChange={(rating) => set({ rating })} />
-              <button className={"star" + (g.favorite ? " on" : "")} onClick={() => set({ favorite: !g.favorite })} aria-label={g.favorite ? "Remove favorite" : "Mark favorite"} title="Favorite">
-                <Icon name="star" />
-              </button>
-            </div>
-            <select className="select" value={g.status} onChange={(e) => set({ status: e.target.value as Game["status"] })} aria-label="Status">
+            {meta && <span className="d-meta">{meta}</span>}
+            <select className="select sm" value={g.status} onChange={(e) => set({ status: e.target.value as Game["status"] })} aria-label="Status" style={{ justifySelf: "start" }}>
               {STATUSES.map((s) => (
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
             </select>
+            <div className="row nowrap" style={{ gap: "var(--s3)" }}>
+              <Stars value={g.rating} onChange={(rating) => set({ rating })} />
+              <FavButton on={g.favorite} onToggle={() => set({ favorite: !g.favorite })} />
+            </div>
           </div>
         </div>
 
-        <div className="quick" role="group" aria-label="Quick actions">
-          {g.status !== "playing" && (
-            <button className="btn sm primary" onClick={() => set({ status: "playing" })}>
-              <Icon name="play" /> {g.status === "paused" ? "Resume" : "Start playing"}
+        <div className="d-acts" role="group" aria-label="Actions">
+          {timing ? (
+            <button className="btn primary" onClick={stopTimer}>
+              <Icon name="stop" /> Stop and log
+            </button>
+          ) : (
+            <button className="btn primary" onClick={() => void play(g.id)} title={target ? `Start through ${LAUNCHER_LABEL[target.source]}` : "There's no launcher link for this game: this starts a session timer"}>
+              <Icon name="play" /> {target ? (g.status === "paused" ? "Continue" : "Play") : "Start timer"}
             </button>
           )}
           {g.status === "playing" && (
-            <button className="btn sm" onClick={() => set({ status: "paused" })}>
+            <button className="btn" onClick={() => set({ status: "paused" })}>
               <Icon name="pause" /> Pause
             </button>
           )}
           {(g.status === "playing" || g.status === "paused" || g.status === "replay") && (
-            <button className="btn sm" onClick={() => set({ status: "completed" })}>
-              <Icon name="check" /> Completed
+            <button className="btn" onClick={() => set({ status: "completed" })}>
+              <Icon name="check" /> Complete
             </button>
           )}
-          <button className="btn sm" onClick={() => setLogFor({ gameId: g.id })}>Log session</button>
-          {upNext &&
-            (upNext.gameIds.includes(g.id) ? (
-              <button
-                className="btn sm ghost"
-                onClick={async () => {
-                  await run(() => repo.removeFromCollection(upNext.id, [g.id]), "Removed from Up Next.");
-                  await reloadCollections();
-                }}
-              >
-                Up Next #{upNext.gameIds.indexOf(g.id) + 1} ✕
-              </button>
-            ) : (
-              <button
-                className="btn sm ghost"
-                onClick={async () => {
-                  await run(() => repo.addToCollection(upNext.id, [g.id]), "Added to the end of Up Next.");
-                  await reloadCollections();
-                }}
-              >
-                <Icon name="plus" /> Up Next
-              </button>
-            ))}
+          <button className="btn" aria-pressed={queued >= 0} onClick={() => void toggleUpNext(g.id)} title={queued >= 0 ? "Remove from Up Next" : "Add to the end of Up Next"}>
+            <Icon name="queue" /> {queued >= 0 ? `Up Next #${queued + 1}` : "Up Next"}
+          </button>
         </div>
-
-        <WhySection gameId={id} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={settings.useUnverifiedLengths} marks={marksByGame} />
-
-        <AboutSection game={g} />
+        {target && !target.installed && target.installed !== null && <div className="meta" style={{ padding: "0 var(--s4) var(--s3)" }}>Not installed as of the last scan — {LAUNCHER_LABEL[target.source]} will offer to install it.</div>}
 
         <DiscoverAnswer gameId={g.id} />
-        <ModdingSection game={g} nav={nav} />
 
-        <details className="sec" open>
-          <summary>Overview</summary>
+        <details className="dsec" open>
+          <summary>Notes</summary>
           <div className="body">
-            <div className="form2">
-              <label className="lbl">
-                Ownership
-                <select className="select" value={g.ownership} onChange={(e) => set({ ownership: e.target.value as Game["ownership"] })}>
-                  {OWNERSHIP.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </label>
-              <label className="lbl">
-                Installed
-                <select className="select" value={g.installStatus} onChange={(e) => set({ installStatus: e.target.value as Game["installStatus"] })}>
-                  {INSTALL.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </label>
-              <label className="lbl">
-                <span className="lbl-row">Players {g.metaSource.multiplayer && <SourceBadge source={g.metaSource.multiplayer} />}</span>
-                <select className="select" value={g.multiplayer} onChange={(e) => set({ multiplayer: e.target.value as Game["multiplayer"] })}>
-                  {MULTIPLAYER.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </label>
-              <label className="lbl">
-                <span className="lbl-row">Endless / sandbox {g.metaSource.endless && <SourceBadge source={g.metaSource.endless} />}</span>
-                <select
-                  className="select"
-                  value={g.endless == null ? "" : g.endless ? "1" : "0"}
-                  onChange={(e) => set({ endless: e.target.value === "" ? null : e.target.value === "1" })}
-                >
-                  <option value="">Unknown</option>
-                  <option value="1">Yes, no real ending</option>
-                  <option value="0">No, it ends</option>
-                </select>
-              </label>
-              <label className="lbl">
-                Platform
-                <CommitInput value={g.platform} onCommit={(v) => set({ platform: v.trim() || "PC" })} />
-              </label>
-              <label className="lbl">
-                Store
-                <CommitInput value={g.storefront ?? ""} placeholder="unknown" onCommit={(v) => set({ storefront: v.trim() || null })} />
-              </label>
-              <label className="lbl" style={{ gridColumn: "1 / -1" }}>
-                Suggest in Pick for me
-                <select className="select" value={g.recPref} onChange={(e) => set({ recPref: e.target.value as Game["recPref"] })}>
-                  {REC_PREFS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </label>
-            </div>
+            <NotesEditor game={g} onSave={(notes) => set({ notes })} />
           </div>
         </details>
 
-        <details className="sec" open>
+        <details className="dsec" open>
           <summary>
-            Length
-            <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>your value wins</span>
+            Tags <span className="hint">{g.tags.length || ""}</span>
+          </summary>
+          <div className="body">
+            <div className="chips">
+              {g.tags.length === 0 && <span className="meta">No tags yet.</span>}
+              {g.tags.map((t) => (
+                <span key={t.tag} className={"chip" + (t.source === "user" ? " user" : "")} title={t.source === "user" ? "Your tag" : SOURCE_LABEL[t.source === "legacy" ? "legacy_table" : t.source] ?? t.source}>
+                  {t.tag}
+                  <button aria-label={`Remove tag ${t.tag}`} onClick={() => void setTags(g.id, g.tags.filter((x) => x.tag !== t.tag).map((x) => x.tag))}>
+                    <Icon name="x" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <form
+              className="row nowrap"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newTag.trim()) return;
+                void setTags(g.id, [...g.tags.map((t) => t.tag), ...newTag.split(",")]);
+                setNewTag("");
+              }}
+            >
+              <input className="field sm grow" placeholder="Add tags, separated by commas" value={newTag} onChange={(e) => setNewTag(e.target.value)} aria-label="Add tags" />
+              <button className="btn sm" type="submit">
+                Add
+              </button>
+            </form>
+          </div>
+        </details>
+
+        <AboutSection game={g} />
+
+        <details className="dsec">
+          <summary>
+            Length <span className="hint">{lengthHint(g, settings.useUnverifiedLengths)}</span>
           </summary>
           <div className="body">
             {LENGTH_KINDS.map((k) => {
               const eff = effectiveLength(g, k.id, settings.useUnverifiedLengths);
               const mine = g.lengths.find((l) => l.kind === k.id && l.source === "user");
-              const other = g.lengths.filter((l) => l.kind === k.id && l.source !== "user");
               return (
                 <div className="lenrow" key={k.id}>
-                  <span className="dim">{k.label}</span>
+                  <span className="muted">{k.label}</span>
                   <span className="num" title={eff ? SOURCE_LABEL[eff.source] ?? eff.source : "No data"}>
                     {eff ? (
                       <>
                         {fmtHours(eff.hours)} <SourceBadge source={eff.source} />
-                        {mine && other.length > 0 && <span className="dim" style={{ fontSize: "var(--fs-xs)" }}> (est. {fmtHours(other[0].hours)})</span>}
                       </>
                     ) : (
-                      <span className="dim">unknown</span>
+                      <span className="muted">unknown</span>
                     )}
                   </span>
                   <CommitInput
+                    className="field"
                     value={mine ? String(mine.hours) : ""}
-                    placeholder="yours"
+                    placeholder="your hours"
                     ariaLabel={`Your ${k.label} hours`}
                     onCommit={(v) => {
                       const t = v.trim();
@@ -256,191 +250,194 @@ export function GameDetail({ id, onClose, nav }: { id: string; onClose(): void; 
               );
             })}
             <div className="lenrow">
-              <span className="dim">Length class</span>
-              <span>
-                {g.scale ? (
-                  <SourceBadge source={g.metaSource.scale ?? "user"} />
-                ) : (
-                  <span className="dim">{g.endless ? "endless flag" : g.lengths.length ? "from hours" : "unknown"}</span>
-                )}
-              </span>
-              <select className="select" value={g.scale ?? ""} onChange={(e) => set({ scale: (e.target.value || null) as Game["scale"] })} aria-label="Length class">
+              <span className="muted">Length class</span>
+              <span className="meta">{g.scale ? "set" : g.endless ? "no set ending" : "from hours"}</span>
+              <select className="select sm" value={g.scale ?? ""} onChange={(e) => set({ scale: (e.target.value || null) as Game["scale"] })} aria-label="Length class">
                 <option value="">—</option>
                 {SCALES.map((s) => (
                   <option key={s.id} value={s.id}>{s.label}</option>
                 ))}
               </select>
             </div>
-            {g.lengths.some((l) => l.source === "legacy_table" || l.source === "ai_estimate") && (
-              <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
-                <span className="badge est">est.</span> = carried over from the old REWIND table; never verified. Type your own hours to override.
-              </div>
-            )}
-            <button className="btn sm" style={{ justifySelf: "start" }} onClick={() => void openExternal(`https://howlongtobeat.com/?q=${encodeURIComponent(cleanTitle(g.title))}`)}>
-              Look up on HowLongToBeat ↗
-            </button>
+            <span className="meta">Your hours always win over estimates. “estimate” means carried over from the old REWIND table and never verified.</span>
           </div>
         </details>
 
-        <details className="sec" open>
-          <summary>Notes</summary>
-          <div className="body">
-            <NotesEditor game={g} onSave={(notes) => set({ notes })} />
-          </div>
-        </details>
+        <WhySection game={g} />
 
-        <details className="sec" open>
-          <summary>Tags</summary>
-          <div className="body">
-            <div className="chips">
-              {g.tags.length === 0 && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>No tags yet.</span>}
-              {g.tags.map((t) => (
-                <span key={t.tag} className={"chip" + (t.source === "user" ? " user" : "")} title={t.source === "user" ? "Your tag" : SOURCE_LABEL[t.source === "legacy" ? "legacy_table" : t.source] ?? t.source}>
-                  {t.tag}
-                  <button aria-label={`Remove tag ${t.tag}`} onClick={() => void setTags(g.id, g.tags.filter((x) => x.tag !== t.tag).map((x) => x.tag))}>
-                    <Icon name="x" className="ico" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <form
-              className="row"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!newTag.trim()) return;
-                void setTags(g.id, [...g.tags.map((t) => t.tag), ...newTag.split(",")]);
-                setNewTag("");
-              }}
-            >
-              <input className="field grow" placeholder="add tags, comma separated" value={newTag} onChange={(e) => setNewTag(e.target.value)} />
-              <button className="btn sm" type="submit">Add</button>
-            </form>
-          </div>
-        </details>
-
-        <details className="sec">
-          <summary>
-            Traits <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>inferred from tags</span>
-          </summary>
-          <div className="body">
-            <TraitBars values={taste.traits.get(g.id)?.values} />
-            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
-              Worked out from the tags above, so they're only as accurate as the tags. Add tags like <span className="mono">guided</span>,{" "}
-              <span className="mono">aimless</span>, <span className="mono">grind</span>, <span className="mono">punishing</span>, <span className="mono">gentle</span>,{" "}
-              <span className="mono">dialogue</span>, <span className="mono">setup</span>, <span className="mono">quicksession</span> or <span className="mono">tense</span> to correct them.
-            </div>
-            {recEvents.some((e) => e.gameId === g.id && (e.kind === "pass" || e.kind === "drop")) && (
-              <div style={{ fontSize: "var(--fs-s)" }}>
-                <div className="mono dim" style={{ fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Your passes and drop reasons</div>
-                {recEvents
-                  .filter((e) => e.gameId === g.id && (e.kind === "pass" || e.kind === "drop"))
-                  .slice(-6)
-                  .reverse()
-                  .map((e) => (
-                    <div key={e.id}>
-                      {fmtDateTime(e.ts)} · {e.kind === "pass" ? "passed" : "dropped"}: {REASONS[e.reason ?? ""]?.label ?? e.reason ?? "no reason"}
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        </details>
-
-        <details className="sec" open={collections.length > 0 && collections.length < 8}>
-          <summary>
-            Collections <span className="right dim num">{inCols.size}</span>
-          </summary>
-          <div className="body">
-            {collections.length === 0 && <span className="dim" style={{ fontSize: "var(--fs-s)" }}>No collections yet. Create one in Collections.</span>}
-            {collections.map((c) => (
-              <label key={c.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={inCols.has(c.id)}
-                  onChange={async (e) => {
-                    const add = e.target.checked;
-                    await run(async () => {
-                      if (add) await repo.addToCollection(c.id, [g.id]);
-                      else await repo.removeFromCollection(c.id, [g.id]);
-                    });
-                    await reloadCollections();
-                  }}
-                />
-                {c.name}
-              </label>
-            ))}
-          </div>
-        </details>
-
-        <details className="sec">
-          <summary>Playtime & dates</summary>
-          <div className="body">
-            <dl className="kv">
-              <PlaytimeRows game={g} />
-              <dt>Completed</dt>
-              <dd>
-                <CommitInput type="date" value={g.dateCompleted ?? ""} onCommit={(v) => set({ dateCompleted: v || null })} />
-              </dd>
-              <dt>Dropped</dt>
-              <dd>
-                <CommitInput type="date" value={g.dateDropped ?? ""} onCommit={(v) => set({ dateDropped: v || null })} />
-              </dd>
-              <dt>Added</dt>
-              <dd className="num">{fmtDate(g.createdAt)}</dd>
-            </dl>
-            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>
-              REWIND uses the larger of the two figures. Playtime is never treated as proof you enjoyed a game; log sessions yourself for a real history.
-            </div>
-          </div>
-        </details>
-
-        <SourcesSection game={g} />
-
-        <details className="sec">
-          <summary>
-            Your corrections <span className="right dim mono" style={{ fontSize: "var(--fs-xs)" }}>override store data</span>
-          </summary>
+        <details className="dsec">
+          <summary>Your details</summary>
           <div className="body">
             <div className="form2">
               <label className="lbl">
+                Ownership
+                <select className="select sm" value={g.ownership} onChange={(e) => set({ ownership: e.target.value as Game["ownership"] })}>
+                  {OWNERSHIP.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Installed
+                <select className="select sm" value={g.installStatus} onChange={(e) => set({ installStatus: e.target.value as Game["installStatus"] })}>
+                  {INSTALL.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Players
+                <select className="select sm" value={g.multiplayer} onChange={(e) => set({ multiplayer: e.target.value as Game["multiplayer"] })}>
+                  {MULTIPLAYER.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Has an ending
+                <select className="select sm" value={g.endless == null ? "" : g.endless ? "1" : "0"} onChange={(e) => set({ endless: e.target.value === "" ? null : e.target.value === "1" })}>
+                  <option value="">Unknown</option>
+                  <option value="0">Yes</option>
+                  <option value="1">No (endless or sandbox)</option>
+                </select>
+              </label>
+              <label className="lbl">
+                Suggest in Pick for me
+                <select className="select sm" value={g.recPref} onChange={(e) => set({ recPref: e.target.value as Game["recPref"] })}>
+                  {REC_PREFS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </label>
+              <label className="lbl">
+                Platform
+                <CommitInput className="field sm" value={g.platform} onCommit={(v) => set({ platform: v.trim() || "PC" })} />
+              </label>
+              <label className="lbl">
                 Release year
-                <CommitInput value={g.releaseYear ? String(g.releaseYear) : ""} placeholder="unknown" onCommit={(v) => set({ releaseYear: /^\d{4}$/.test(v.trim()) ? Number(v.trim()) : null })} />
+                <CommitInput className="field sm" value={g.releaseYear ? String(g.releaseYear) : ""} placeholder={year ? String(year) : "unknown"} onCommit={(v) => set({ releaseYear: /^\d{4}$/.test(v.trim()) ? Number(v.trim()) : null })} />
               </label>
               <label className="lbl">
                 Developer
-                <CommitInput value={g.developer ?? ""} placeholder="unknown" onCommit={(v) => set({ developer: v.trim() || null })} />
+                <CommitInput className="field sm" value={g.developer ?? ""} placeholder={companies(g)[0] ?? "unknown"} onCommit={(v) => set({ developer: v.trim() || null })} />
               </label>
               <label className="lbl">
                 Publisher
-                <CommitInput value={g.publisher ?? ""} placeholder="unknown" onCommit={(v) => set({ publisher: v.trim() || null })} />
+                <CommitInput className="field sm" value={g.publisher ?? ""} placeholder="unknown" onCommit={(v) => set({ publisher: v.trim() || null })} />
+              </label>
+              <label className="lbl">
+                Completed on
+                <CommitInput className="field sm" type="date" value={g.dateCompleted ?? ""} onCommit={(v) => set({ dateCompleted: v || null })} />
+              </label>
+              <label className="lbl">
+                Dropped on
+                <CommitInput className="field sm" type="date" value={g.dateDropped ?? ""} onCommit={(v) => set({ dateDropped: v || null })} />
               </label>
             </div>
-            <div className="dim" style={{ fontSize: "var(--fs-s)" }}>Leave these empty to show what Steam or IGDB says. Anything you type here wins and is never replaced by a sync.</div>
+            <span className="meta">Empty fields show store data in grey. Anything you type wins and is never replaced by a lookup.</span>
           </div>
         </details>
 
-        <details className="sec">
+        <details className="dsec">
           <summary>
-            History <span className="right dim num">{events.length}</span>
+            Playtime <span className="hint">{fmtPlaytime(Math.max(g.steamPlaytimeMin ?? 0, g.importedPlaytimeMin ?? 0) || null)}</span>
           </summary>
           <div className="body">
-            {events.length === 0 ? (
-              <span className="dim" style={{ fontSize: "var(--fs-s)" }}>No recorded changes yet.</span>
+            <dl className="kv">
+              <PlaytimeRows game={g} />
+              {g.sources
+                .filter((s) => s.source !== "steam")
+                .map((s) => (
+                  <PlaytimeLine key={s.source} label={`${LAUNCHER_LABEL[s.source]} playtime`} value={s.playtimeMin} />
+                ))}
+              <dt>Last played</dt>
+              <dd>{g.lastPlayed ? fmtDay(g.lastPlayed) : <span className="muted">—</span>}</dd>
+              <dt>Added</dt>
+              <dd className="num">{fmtDate(g.createdAt)}</dd>
+            </dl>
+            <span className="meta">
+              Playtime is only shown when a launcher really reports it (Steam does; Epic, Ubisoft Connect and Rockstar don't). Sessions you log or time are kept
+              separately in Activity.
+            </span>
+          </div>
+        </details>
+
+        <details className="dsec">
+          <summary>
+            Launchers and store links <span className="hint">technical</span>
+          </summary>
+          <div className="body">
+            {g.sources.length === 0 ? (
+              <span className="meta">No launcher recorded. Import from Settings → Connections, or choose where you have it when adding a game.</span>
             ) : (
-              <div className="eventlog inset">
-                {events.map((e) => (
-                  <div className="ev" key={e.id}>
-                    <time>{fmtDateTime(e.ts)}</time>
-                    <span>{describeEvent(e)}</span>
+              <div className="stack tight">
+                {g.sources.map((s) => (
+                  <div key={s.source} className="srcrow">
+                    <div className="row">
+                      <b>{LAUNCHER_LABEL[s.source]}</b>
+                      <span className="muted">
+                        · {s.installed === true ? "installed" : s.installed === false ? "not installed" : "install state unknown"}
+                        {s.lastSeenAt ? ` · seen ${fmtDate(s.lastSeenAt)}` : ""} · {METHOD[s.method] ?? s.method}
+                      </span>
+                    </div>
+                    {s.installPath && <span className="mono muted ellipsis" title={s.installPath}>{s.installPath}</span>}
+                    {s.launch && <span className="mono muted ellipsis" title="Launch link">{s.launch}</span>}
+                    {s.source === "rockstar" && <span className="meta">Rockstar has no documented way to start a single game: open the Rockstar Games Launcher yourself.</span>}
                   </div>
                 ))}
               </div>
             )}
+            <SourcesSection game={g} />
+            {legacyMods > 0 && (
+              <div className="note">
+                {legacyMods} modding profile{legacyMods > 1 ? "s" : ""} from REWIND 4 {legacyMods > 1 ? "are" : "is"} kept for this game. Export them from Settings → Data.
+              </div>
+            )}
+          </div>
+        </details>
+
+        <details className="dsec">
+          <summary>
+            History <span className="hint">{events.length}</span>
+          </summary>
+          <div className="body">
+            {events.length === 0 ? (
+              <span className="meta">No recorded changes yet.</span>
+            ) : (
+              <div className="rows">
+                {events.map((e) => (
+                  <div className="r-item no-lead" key={e.id} style={{ minHeight: 0, padding: "var(--s1) 0" }}>
+                    <span className="small">{describeEvent(e)}</span>
+                    <span className="meta num">{fmtDateTime(e.ts)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="btn sm ghost" style={{ justifySelf: "start" }} onClick={() => void openExternal(`https://howlongtobeat.com/?q=${encodeURIComponent(cleanTitle(g.title))}`)}>
+              Look it up on HowLongToBeat <Icon name="external" />
+            </button>
           </div>
         </details>
       </div>
+      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
     </aside>
   );
+}
+
+const METHOD: Record<string, string> = {
+  steam_import: "from your Steam library",
+  local_scan: "found on this PC",
+  manual: "added by you",
+  migrated: "from REWIND 4",
+};
+
+function PlaytimeLine({ label, value }: { label: string; value: number | null }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>{value != null ? fmtPlaytime(value) : <span className="muted">not reported by the launcher</span>}</dd>
+    </>
+  );
+}
+
+function lengthHint(g: Game, allowEst: boolean): string {
+  if (g.endless) return "no set ending";
+  const m = effectiveLength(g, "main", allowEst);
+  const e = effectiveLength(g, "main_extras", allowEst);
+  const x = e ?? m;
+  return x ? `${x.verified ? "" : "~"}${fmtHours(x.hours)}` : "unknown";
 }
 
 function TitleEditor({ game, onSave }: { game: Game; onSave(t: string): void }) {
@@ -448,8 +445,8 @@ function TitleEditor({ game, onSave }: { game: Game; onSave(t: string): void }) 
   useEffect(() => setV(cleanTitle(game.title)), [game.title]);
   return (
     <textarea
-      className="dtitle"
-      rows={2}
+      className="d-title"
+      rows={1}
       value={v}
       aria-label="Title"
       title="Click to rename"
@@ -464,6 +461,11 @@ function TitleEditor({ game, onSave }: { game: Game; onSave(t: string): void }) 
           e.preventDefault();
           (e.target as HTMLTextAreaElement).blur();
         }
+        if (e.key === "Escape") {
+          setV(cleanTitle(game.title));
+          e.stopPropagation();
+          (e.target as HTMLTextAreaElement).blur();
+        }
       }}
     />
   );
@@ -474,10 +476,13 @@ function NotesEditor({ game, onSave }: { game: Game; onSave(n: string): void }) 
   const [dirty, setDirty] = useState(false);
   const latest = useRef({ v, dirty, onSave });
   latest.current = { v, dirty, onSave };
-  // Switching to another game or closing the panel never loses a half-typed note.
-  useEffect(() => () => {
-    if (latest.current.dirty) latest.current.onSave(latest.current.v);
-  }, []);
+  // Switching game or closing the panel never loses a half-typed note.
+  useEffect(
+    () => () => {
+      if (latest.current.dirty) latest.current.onSave(latest.current.v);
+    },
+    [],
+  );
   useEffect(() => {
     setV(game.notes);
     setDirty(false);
@@ -495,7 +500,8 @@ function NotesEditor({ game, onSave }: { game: Game; onSave(n: string): void }) 
       <textarea
         className="field"
         value={v}
-        placeholder="Where you left off, mods you used, what to remember next time…"
+        placeholder="Where you left off, what to remember next time…"
+        aria-label="Notes"
         onChange={(e) => {
           setV(e.target.value);
           setDirty(true);
@@ -507,56 +513,80 @@ function NotesEditor({ game, onSave }: { game: Game; onSave(n: string): void }) 
           }
         }}
       />
-      <span className="dim mono" style={{ fontSize: "var(--fs-xs)" }}>{dirty ? "saving…" : "saved"}</span>
+      <span className="meta">{dirty ? "Saving…" : "Saved"}</span>
     </>
   );
 }
 
-export function describeEvent(e: EventRow, title?: string): string {
+/** `shown`: the caller already printed the game's name next to this text. */
+export function describeEvent(e: EventRow, title?: string, shown = false): string {
   const t = title ? `${title}: ` : "";
+  const named = (x: unknown) => (t || shown ? t : String(x) + ": ");
   const label = (s: unknown) => STATUSES.find((x) => x.id === s)?.label ?? String(s);
   switch (e.type) {
     case "status":
       return `${t}${label(e.data.from)} → ${label(e.data.to)}`;
     case "rating":
-      return `${t}rating ${e.data.to ? "★".repeat(Number(e.data.to)) : "cleared"}`;
+      return `${t}${e.data.to ? `rated ${"★".repeat(Number(e.data.to))}` : "rating cleared"}`;
     case "game_added":
-      return `${t || String(e.data.title) + ": "}added to library`;
+      return `${named(e.data.title)}added to the library`;
     case "import":
       return `Imported from ${String(e.data.from)}: ${e.data.added} added, ${e.data.merged} merged, ${e.data.skipped} skipped`;
     case "restore":
       return `Backup restored (${String(e.data.mode)})`;
     case "steam_import": {
-      const src = e.data.source === "steam_local" ? "Steam client on this PC" : "Steam account";
-      return `Steam import (${src}): ${Number(e.data.linked ?? 0)} matched, ${Number(e.data.added ?? 0)} added, Steam playtime updated for ${Number(e.data.playtimeUpdated ?? 0)}`;
+      const src = e.data.source === "steam_local" ? "Steam on this PC" : "your Steam account";
+      return `Steam import from ${src}: ${Number(e.data.linked ?? 0)} matched, ${Number(e.data.added ?? 0)} added, playtime updated for ${Number(e.data.playtimeUpdated ?? 0)}`;
+    }
+    case "launcher_import": {
+      const d = e.data as Record<string, unknown>;
+      const srcs = Array.isArray(d.sources) ? (d.sources as string[]).map((s) => LAUNCHER_LABEL[s as keyof typeof LAUNCHER_LABEL] ?? s).join(", ") : "launchers";
+      return `Launcher scan (${srcs}): ${Number(d.linked ?? 0)} matched, ${Number(d.added ?? 0)} added${Number(d.uninstalled ?? 0) ? `, ${Number(d.uninstalled)} no longer installed` : ""}`;
     }
     case "metadata_sync": {
       const c = e.data as Record<string, number | string>;
       const bits = [c.linked && `${c.linked} linked`, c.fetched && `${c.fetched} updated`, c.covers && `${c.covers} covers`, c.review && `${c.review} to review`].filter(Boolean);
       const how = c.outcome === "complete" ? "" : c.outcome === "offline" ? " (stopped: offline)" : c.outcome === "cancelled" ? " (stopped by you)" : ` (${String(c.outcome)})`;
-      return `Details & covers sync${how}${bits.length ? ": " + bits.join(", ") : ": nothing new"}`;
+      return `Store details lookup${how}${bits.length ? ": " + bits.join(", ") : ": nothing new"}`;
     }
     case "session": {
       const m = e.data.minutes == null ? null : Number(e.data.minutes);
-      return `${t}played${m ? ` for ${m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`}` : ""} (logged for ${String(e.data.date)})`;
+      return `${t}played${m ? ` for ${m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`}` : ""} (session for ${String(e.data.date)})`;
     }
+    case "games_merged":
+      return `${t}combined with “${String(e.data.merged).replace(/[™®]/g, "")}”`;
     case "legacy_log":
-      return `[old REWIND] ${String(e.data.text).replace(/[™®]/g, "")}`;
+      return `From the old REWIND: ${String(e.data.text).replace(/[™®]/g, "")}`;
     case "discover_lookup":
-      return `Discover looked beyond your library on IGDB: ${Number(e.data.games ?? 0)} games found from ${Number(e.data.seeds ?? 0)} favourites`;
+      return `Discover looked beyond your library: ${Number(e.data.games ?? 0)} games found from ${Number(e.data.seeds ?? 0)} favourites`;
     case "mod_profile_created":
-      return `${t}modding profile "${String(e.data.name)}" created`;
+      return `${t}modding profile “${String(e.data.name)}” created (REWIND 4)`;
     case "mod_profile_deleted":
-      return `${t}modding profile "${String(e.data.name)}" deleted`;
+      return `${t}modding profile “${String(e.data.name)}” deleted (REWIND 4)`;
     case "game_added_from_discover":
-      return `${t || String(e.data.title) + ": "}added to library from Discover (${String(e.data.ownership)})`;
+      return `${named(e.data.title)}added from Discover (${String(e.data.ownership)})`;
     default:
-      return `${t}${e.type}`;
+      return `${t}${e.type.replace(/_/g, " ")}`;
   }
 }
 
-function WhySection({
-  gameId,
+function WhySection({ game }: { game: Game }) {
+  const { games, profile, recEvents, settings } = useApp();
+  const { taste, series, marksByGame } = useTaste();
+  const allowUnverified = settings.useUnverifiedLengths;
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="dsec" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary>
+        Why REWIND would suggest it <span className="hint">on request</span>
+      </summary>
+      {open && <WhyBody game={game} games={games} taste={taste} series={series} profile={profile} recEvents={recEvents} allowUnverified={allowUnverified} marks={marksByGame} />}
+    </details>
+  );
+}
+
+function WhyBody({
+  game,
   games,
   taste,
   series,
@@ -565,73 +595,84 @@ function WhySection({
   allowUnverified,
   marks,
 }: {
-  marks: Map<string, { kind: string }>;
-  gameId: string;
+  game: Game;
   games: Game[];
   taste: ReturnType<typeof useTaste>["taste"];
   series: ReturnType<typeof useTaste>["series"];
   profile: ReturnType<typeof useApp>["profile"];
   recEvents: ReturnType<typeof useApp>["recEvents"];
   allowUnverified: boolean;
+  marks: Map<string, { kind: string }>;
 }) {
   const r = recommend({ games, taste, events: recEvents, session: EMPTY_SESSION, weights: DEFAULT_WEIGHTS, profile, series, allowUnverified, marks });
-  const rec = r.results.find((x) => x.game.id === gameId);
-  return (
-    <details className="sec" open>
-      <summary>
-        Why REWIND would suggest it
-        <span className="right">{rec ? <span className={"band b-" + rec.band}>{BAND_LABEL[rec.band]}</span> : <span className="dim mono" style={{ fontSize: "var(--fs-xs)" }}>not suggested</span>}</span>
-      </summary>
-      <div className="body" style={{ fontSize: "var(--fs-s)" }}>
-        {!rec ? (
-          <div className="dim">
-            Left out of suggestions:{" "}
-            {(() => {
-              const g = games.find((x) => x.id === gameId)!;
-              if (g.tags.some((t) => t.tag === "tool")) return "it's a tool or test client.";
-              if (g.status === "not_interested") return "marked Not interested.";
-              if (g.recPref === "never") return "set to never suggest.";
-              if (g.multiplayer === "mp_required" || g.multiplayer === "coop_focused") return "it needs other players (change Players above if that's wrong).";
-              if (g.status === "completed") return "you've finished it (Pick for me includes finished games under 'Something nostalgic').";
-              if (g.ownership !== "owned") return "you don't own it.";
-              return "excluded by current settings.";
-            })()}
-          </div>
-        ) : (
-          <>
-            <div className="dim">With no mood or time set — Pick for me adjusts this to each session.</div>
-            {rec.pros.length > 0 && (
-              <ul className="pros">
-                {rec.pros.map((p) => <li key={p.text}>{p.text}</li>)}
-              </ul>
-            )}
-            {rec.cons.length > 0 && (
-              <ul className="cons">
-                {rec.cons.map((p) => <li key={p.text}>{p.text}</li>)}
-              </ul>
-            )}
-            <div className="mono dim" style={{ fontSize: "var(--fs-xs)" }}>
-              {rec.confidence.level} confidence · {rec.sources.join(" · ")}
-            </div>
-          </>
-        )}
+  const rec = r.results.find((x) => x.game.id === game.id);
+  if (!rec) {
+    const why = game.tags.some((t) => t.tag === "tool")
+      ? "it's a tool, not a game."
+      : game.status === "not_interested"
+        ? "you marked it Not interested."
+        : game.recPref === "never"
+          ? "it's set to never be suggested (Your details)."
+          : game.multiplayer === "mp_required" || game.multiplayer === "coop_focused"
+            ? "it needs other players (change Players under Your details if that's wrong)."
+            : game.status === "completed"
+              ? "you've finished it (Pick for me can still offer it as a replay)."
+              : game.ownership !== "owned"
+                ? "you don't own it."
+                : "it's excluded by your current settings.";
+    return (
+      <div className="body">
+        <span className="dim">Not suggested right now: {why}</span>
       </div>
-    </details>
-  );
-}
-
-function TraitBars({ values }: { values: Record<string, number | null> | undefined }) {
-  if (!values) return null;
-  const known = TRAITS.filter((t) => values[t] != null);
-  if (!known.length) return <div className="dim" style={{ fontSize: "var(--fs-s)" }}>No tags yet, so no traits.</div>;
+    );
+  }
+  const e = explain(rec, allowUnverified, 5);
+  const traits = taste.traits.get(game.id)?.values;
+  const known = traits ? TRAITS.filter((t) => traits[t] != null) : [];
+  const passes = recEvents.filter((x) => x.gameId === game.id && (x.kind === "pass" || x.kind === "drop")).slice(-5).reverse();
   return (
-    <div className="traitbars">
-      {known.map((t) => (
-        <div key={t} className="tb">
-          <span>{TRAIT_LABEL[t]}</span>
-          <span className="track"><span className="fill" style={{ width: `${(values[t] ?? 0) * 100}%` }} /></span>
+    <div className="body">
+      {e.reasons.length > 0 ? (
+        <ul className="why">
+          {e.reasons.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
+      ) : (
+        <span className="dim">Nothing specific stands out for this game yet — rate similar games or add tags to tell REWIND more.</span>
+      )}
+      {rec.cons.length > 0 && (
+        <ul className="why cons">
+          {rec.cons.slice(0, 3).map((x) => (
+            <li key={x.text}>{x.text}</li>
+          ))}
+        </ul>
+      )}
+      <span className="meta">
+        {rec.confidence.level} confidence · based on {rec.sources.join(", ") || "your library only"}. Pick for me adjusts this to your mood and time.
+      </span>
+      {known.length > 0 && (
+        <div className="traitbars" aria-label="Traits worked out from tags">
+          {known.map((t) => (
+            <div key={t} className="tb">
+              <span>{TRAIT_LABEL[t]}</span>
+              <span className="track">
+                <span className="fill" style={{ width: `${(traits![t] ?? 0) * 100}%` }} />
+              </span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      {passes.length > 0 && (
+        <div className="stack tight">
+          <span className="meta">Your passes and drop reasons</span>
+          {passes.map((x) => (
+            <span key={x.id} className="small dim">
+              {fmtDay(x.ts)} · {x.kind === "pass" ? "passed" : "dropped"}: {REASONS[x.reason ?? ""]?.label ?? x.reason ?? "no reason"}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -643,54 +684,13 @@ function DiscoverAnswer({ gameId }: { gameId: string }) {
   if (!m) return null;
   const until = hiddenUntil(m);
   return (
-    <div className="note info row" style={{ fontSize: "var(--fs-s)" }}>
+    <div className="note row" style={{ margin: "0 var(--s4) var(--s4)" }}>
       <span className="grow">
-        Your answer in Discover: <b>{MARK_LABEL[m.kind]}</b> ({fmtDate(m.updatedAt)}){until ? ` — hidden from suggestions until ${until}` : ""}.
+        You said <b>{MARK_LABEL[m.kind]}</b> in Discover ({fmtDay(m.updatedAt)}){until ? `, hidden from suggestions until ${until}` : ""}.
       </span>
       <button className="btn ghost sm" onClick={() => void clearMark(m.key)}>
         Clear
       </button>
     </div>
-  );
-}
-
-/** Modding-companion profiles linked to this game. */
-function ModdingSection({ game, nav }: { game: Game; nav?: Nav }) {
-  const { repo, run } = useApp();
-  const [profiles, setProfiles] = useState<ModProfile[] | null>(null);
-  const preset = presetForGame(game);
-  useEffect(() => {
-    void repo.loadModProfiles().then((ps) => setProfiles(ps.filter((p) => p.gameId === game.id)));
-  }, [repo, game.id]);
-  if (!profiles || (!profiles.length && !preset)) return null;
-  return (
-    <details className="sec" open={profiles.length > 0}>
-      <summary>Modding {profiles.length > 0 && <span className="dim">({profiles.length})</span>}</summary>
-      <div className="body" style={{ display: "grid", gap: "0.4rem" }}>
-        {profiles.map((p) => (
-          <div key={p.id} className="row">
-            <span className="grow">
-              <b>{p.name}</b> <span className="dim">· {p.entries.length} mods{p.manager ? ` · ${p.manager}` : ""} · {p.status}</span>
-            </span>
-            {nav && (
-              <button className="btn sm" onClick={() => nav.openModProfile(p.id)}>
-                Open
-              </button>
-            )}
-          </div>
-        ))}
-        {preset && nav && (
-          <button
-            className="btn sm"
-            onClick={async () => {
-              const id = await run(() => repo.createModProfile({ name: `${cleanTitle(game.title)} — modded`, gameKey: preset.id, gameId: game.id, gameTitle: game.title, manager: presetById(preset.id).managers[0] ?? "", checklist: preset.checklist }));
-              if (id) nav.openModProfile(id);
-            }}
-          >
-            <Icon name="plus" /> Plan a modded playthrough
-          </button>
-        )}
-      </div>
-    </details>
   );
 }

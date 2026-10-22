@@ -115,7 +115,7 @@ export function MatchPicker({ game, provider, onDone, compact }: { game: Game; p
 
   return (
     <div className={"mpick" + (compact ? " compact" : "")}>
-      {m?.error && <div className="note" style={{ fontSize: "var(--fs-s)" }}>{m.error}</div>}
+      {m?.error && <div className="note" style={{ fontSize: "var(--fs-meta)" }}>{m.error}</div>}
       {cands.length > 0 ? (
         <div className="mp-cands" role="list" aria-label={`${PROVIDER_LABEL[provider]} candidates`}>
           {cands.map((c) => (
@@ -133,7 +133,7 @@ export function MatchPicker({ game, provider, onDone, compact }: { game: Game; p
           ))}
         </div>
       ) : (
-        <div className="dim" style={{ fontSize: "var(--fs-s)" }}>No candidates yet. Search by a different name, or paste a store link.</div>
+        <div className="dim" style={{ fontSize: "var(--fs-meta)" }}>No candidates yet. Search by a different name, or paste a store link.</div>
       )}
       <div className="mp-tools">
         <form
@@ -160,7 +160,7 @@ export function MatchPicker({ game, provider, onDone, compact }: { game: Game; p
           None of these
         </button>
       </div>
-      {err && <div className="note bad" style={{ fontSize: "var(--fs-s)" }}>{err}</div>}
+      {err && <div className="note bad" style={{ fontSize: "var(--fs-meta)" }}>{err}</div>}
     </div>
   );
 }

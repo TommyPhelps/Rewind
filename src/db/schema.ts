@@ -236,6 +236,43 @@ export const MIGRATIONS: { version: number; name: string; sql: string[] }[] = [
       )`,
     ],
   },
+  {
+    version: 5,
+    name: "launchers and one library entry per game",
+    sql: [
+      // Where you own (or have installed) each game. One row per launcher; a game owned on
+      // Steam and Epic is one library entry with two rows here. Different editions or
+      // remasters stay separate games.
+      `CREATE TABLE game_sources (
+        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        source TEXT NOT NULL CHECK (source IN ('steam','epic','ubisoft','rockstar','gog','other')),
+        external_id TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        installed INTEGER,
+        install_path TEXT,
+        launch TEXT,
+        method TEXT NOT NULL DEFAULT 'manual',
+        playtime_min INTEGER,
+        last_seen_at TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (game_id, source)
+      )`,
+      `CREATE INDEX game_sources_ext ON game_sources(source, external_id)`,
+      // Games that came from your Steam library (Steam import) are owned on Steam.
+      // A Steam app id alone isn't proof of ownership: metadata lookups set it too.
+      `INSERT OR IGNORE INTO game_sources (game_id, source, external_id, title, launch, method, playtime_min, created_at)
+         SELECT id, 'steam', COALESCE(CAST(steam_app_id AS TEXT), ''), title,
+           CASE WHEN steam_app_id IS NOT NULL THEN 'steam://rungameid/' || steam_app_id END,
+           'migrated', steam_playtime_min, COALESCE(steam_synced_at, updated_at)
+         FROM games WHERE storefront = 'Steam' OR steam_playtime_min IS NOT NULL`,
+      // Collections are no longer a separate section. Up Next stays as your queue; any other
+      // collection you made becomes a tag on its games (the collection itself is kept, too).
+      `INSERT OR IGNORE INTO game_tags (game_id, tag, source)
+         SELECT cg.game_id, lower(trim(substr(c.name, 1, 40))), 'user'
+         FROM collection_games cg JOIN collections c ON c.id = cg.collection_id
+         WHERE lower(trim(c.name)) <> 'up next' AND trim(c.name) <> ''`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -259,6 +296,7 @@ export const BACKUP_TABLES = [
   "mod_notes",
   "mod_checklist",
   "mod_runs",
+  "game_sources",
 ] as const;
 
 /** Schema version each backup section first appeared in (older backups simply lack it). */
@@ -271,6 +309,7 @@ export const TABLE_SINCE: Partial<Record<BackupTable, number>> = {
   mod_notes: 4,
   mod_checklist: 4,
   mod_runs: 4,
+  game_sources: 5,
 };
 export type BackupTable = (typeof BACKUP_TABLES)[number];
 

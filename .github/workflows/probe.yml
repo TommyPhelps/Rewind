@@ -20,7 +20,6 @@ jobs:
       - name: Probe
         run: |
           node tools/probe-steam.mjs > probe.txt || true
-          node tools/probe-mods.mjs >> probe.txt || true
           tail -c 2000 probe.txt
       - name: Save report to probe-logs branch
         if: always()

@@ -69,6 +69,12 @@ jobs:
           set -o pipefail
           npm run build 2>&1 | tee "$LOGS/03-frontend.log"
 
+      - name: Rust tests (launcher links, DPAPI, database snapshot)
+        if: always() && steps.install.outcome == 'success'
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee "$LOGS/03a-rust-tests.log"
+
       - name: Add new Rust dependencies to Cargo.lock (existing versions stay pinned)
         if: always() && steps.install.outcome == 'success'
         run: |
@@ -86,29 +92,92 @@ jobs:
           LOCKED=""; [ -f src-tauri/Cargo.lock ] && LOCKED="-- --locked"
           npx tauri build --bundles nsis $LOCKED 2>&1 | tee "$LOGS/04-tauri-nsis.log"
 
+      # Stable file names, so "releases/latest/download/<name>" links never change between versions.
       - name: Collect NSIS installer + portable exe
         id: collect
         if: always() && steps.nsis.outcome == 'success'
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the app version $VERSION"; exit 1
+          fi
           mkdir -p out
-          cp src-tauri/target/release/bundle/nsis/*.exe out/
-          cp src-tauri/target/release/rewind.exe "out/REWIND_${VERSION}_x64_portable.exe"
+          cp src-tauri/target/release/bundle/nsis/*.exe out/REWIND-setup-x64.exe
+          cp src-tauri/target/release/rewind.exe out/REWIND-portable-x64.exe
           ls -la out | tee "$LOGS/05-outputs.log"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # Starts the real portable exe on a REWIND 4 library: it must open, upgrade to schema 5
+      # after saving a full copy, keep every game and personal field, encrypt the stored key,
+      # report back and quit (tools/smoke.ts).
+      - name: Start-up and upgrade check (portable exe on a REWIND 4 library)
+        id: smoke
+        if: always() && steps.collect.outcome == 'success'
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          DATA_W="$APPDATA\\dev.tommy.rewind"; DATA_U="$(cygpath -u "$APPDATA")/dev.tommy.rewind"
+          rm -rf "$DATA_U"
+          node tools/smoke.ts make "$DATA_W\\rewind.sqlite3" 2>&1 | tee "$LOGS/08-smoke.log"
+          export REWIND_SMOKE_OUT="$(cygpath -w "$RUNNER_TEMP")\\smoke.json"
+          rm -f "$(cygpath -u "$REWIND_SMOKE_OUT")"
+          ./out/REWIND-portable-x64.exe &
+          for i in $(seq 1 120); do [ -f "$(cygpath -u "$REWIND_SMOKE_OUT")" ] && break; sleep 1; done
+          sleep 2; taskkill //F //IM REWIND-portable-x64.exe > /dev/null 2>&1 || true
+          node tools/smoke.ts verify "$DATA_W\\rewind.sqlite3" "$REWIND_SMOKE_OUT" "$DATA_W\\backups" 2>&1 | tee -a "$LOGS/08-smoke.log"
+
+      - name: Installer check (NSIS, per-user; silent install, start, uninstall keeps your data)
+        if: always() && steps.smoke.outcome == 'success'
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          {
+            ./out/REWIND-setup-x64.exe //S
+            DIR="$(cygpath -u "$LOCALAPPDATA")/REWIND"
+            for i in $(seq 1 60); do ls "$DIR"/*.exe > /dev/null 2>&1 && break; sleep 1; done
+            ls -la "$DIR"
+            EXE=$(ls "$DIR"/*.exe | grep -vi uninstall | head -1)
+            echo "installed: $EXE"
+            export REWIND_SMOKE_OUT="$(cygpath -w "$RUNNER_TEMP")\\smoke2.json"
+            "$EXE" &
+            for i in $(seq 1 120); do [ -f "$(cygpath -u "$REWIND_SMOKE_OUT")" ] && break; sleep 1; done
+            sleep 2; taskkill //F //IM "$(basename "$EXE")" > /dev/null 2>&1 || true
+            node -e "const r=require(process.argv[1]); console.log(JSON.stringify(r)); if(!r.ok||r.schema!==5||r.games!==60) process.exit(1)" "$REWIND_SMOKE_OUT"
+            "$DIR/uninstall.exe" //S
+            for i in $(seq 1 60); do [ -f "$EXE" ] || break; sleep 1; done
+            [ -f "$EXE" ] && { echo "uninstall left the app behind"; exit 1; }
+            [ -f "$(cygpath -u "$APPDATA")/dev.tommy.rewind/rewind.sqlite3" ] || { echo "uninstall removed the library!"; exit 1; }
+            echo "NSIS OK: installed, started on the upgraded library, uninstalled, library kept"
+          } 2>&1 | tee "$LOGS/09-nsis-install.log"
+
       - name: Build MSI installer
+        id: msi
         if: always() && steps.collect.outcome == 'success'
         run: |
           set -o pipefail
           LOCKED=""; [ -f src-tauri/Cargo.lock ] && LOCKED="-- --locked"
           npx tauri build --bundles msi $LOCKED 2>&1 | tee "$LOGS/06-tauri-msi.log"
-          cp src-tauri/target/release/bundle/msi/*.msi out/
+          cp src-tauri/target/release/bundle/msi/*.msi out/REWIND-x64.msi
+
+      - name: Installer check (MSI; silent install and uninstall)
+        if: always() && steps.msi.outcome == 'success'
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          {
+            MSI="$(cygpath -w out/REWIND-x64.msi)"
+            msiexec //i "$MSI" //qn //norestart
+            ls -la "/c/Program Files/REWIND"
+            ls "/c/Program Files/REWIND"/*.exe
+            msiexec //x "$MSI" //qn //norestart
+            [ -d "/c/Program Files/REWIND" ] && ls "/c/Program Files/REWIND"/*.exe 2>/dev/null && { echo "MSI uninstall left files"; exit 1; }
+            echo "MSI OK: installed to Program Files and removed"
+          } 2>&1 | tee "$LOGS/10-msi-install.log"
 
       - name: Checksums
         if: always() && steps.collect.outcome == 'success'
         run: |
-          cd out && sha256sum * | grep -v SHA256SUMS > SHA256SUMS.txt; cat SHA256SUMS.txt | tee -a "$LOGS/05-outputs.log"
+          cd out && rm -f SHA256SUMS.txt && sha256sum * > SHA256SUMS.txt; cat SHA256SUMS.txt | tee -a "$LOGS/05-outputs.log"
 
       # Uploads whatever was built, even if a later step (like the MSI) failed.
       - name: Upload installers
@@ -161,12 +230,17 @@ jobs:
         run: |
           mkdir -p "$LOGS"
           echo "run=${GITHUB_RUN_NUMBER} attempt=${GITHUB_RUN_ATTEMPT} sha=${GITHUB_SHA} status=${JOB_STATUS}" > "$LOGS/RUN.txt"
-          cd "$RUNNER_TEMP" && rm -rf logrepo && mkdir logrepo && cd logrepo
-          git init -q && cp "$LOGS"/* .
-          git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com add .
+          URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          cd "$RUNNER_TEMP" && rm -rf logrepo
+          # Adds a commit on top of the existing logs branch (never a force-push).
+          if git clone -q --depth 1 --branch ci-logs "$URL" logrepo 2>/dev/null; then cd logrepo && git rm -rq --ignore-unmatch . ; else mkdir logrepo && cd logrepo && git init -q && git checkout -q -b ci-logs; fi
+          cp "$LOGS"/* .
+          git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com add -A .
           git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com commit -qm "CI logs: run ${GITHUB_RUN_NUMBER} (${JOB_STATUS})"
-          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/ci-logs || echo "::warning::could not save logs branch"
+          git push -q "$URL" HEAD:refs/heads/ci-logs || echo "::warning::could not save logs branch"
 
+  # Runs only when every check in "build" passed (tests, type check, Rust tests, start-up and
+  # upgrade check, both installer checks).
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
@@ -174,13 +248,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: REWIND-*-windows-x64
           path: dist
           merge-multiple: true
+      - name: Verify checksums
+        run: cd dist && sha256sum -c SHA256SUMS.txt
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: REWIND ${{ github.ref_name }}
+          body_path: docs/release-notes/${{ github.ref_name }}.md
           files: dist/*
-          generate_release_notes: true
+          make_latest: true

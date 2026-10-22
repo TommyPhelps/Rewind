@@ -193,7 +193,7 @@ export function buildDiscover(input: DiscoverInput): DiscoverModel {
     games: all,
     taste,
     events: input.events,
-    session: { ...EMPTY_SESSION },
+    session: { ...EMPTY_SESSION, allowSequels: !input.prefs.seriesOrder },
     weights: DEFAULT_WEIGHTS,
     profile: input.profile,
     series: input.series,

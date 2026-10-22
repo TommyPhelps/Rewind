@@ -1,7 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Repo, type GamePatch } from "../db/repo.ts";
-import { createDriver, ensureWindowOnScreen, getAppInfo, setArtBase, type AppInfo } from "../platform/native.ts";
-import { DEFAULT_SETTINGS, type AppSettings, type Collection, type Game, type GamingProfile, type LengthKind } from "../lib/types.ts";
+import { createDriver, ensureWindowOnScreen, getAppInfo, inDesktopApp, launchGame, protectSecret, setArtBase, smokeReport, snapshotDatabase, unprotectSecret, type AppInfo } from "../platform/native.ts";
+import { SCHEMA_VERSION } from "../db/schema.ts";
+import { DEFAULT_SETTINGS, LAUNCHER_LABEL, normalizeSettings, type AppSettings, type Collection, type Game, type GamingProfile, type LengthKind } from "../lib/types.ts";
+import { cleanTitle } from "../lib/canon.ts";
+import { findUpNext } from "../lib/queues.ts";
+import { launchTarget } from "../launchers/launch.ts";
 import { DEFAULT_PROFILE } from "../data/profileDefaults.ts";
 import { applyReferenceData } from "../migrate/reference.ts";
 import type { RecEvent } from "../rec/taste.ts";
@@ -11,6 +15,19 @@ export interface Toast {
   id: number;
   text: string;
   err?: boolean;
+}
+
+export interface LogRequest {
+  gameId: string | null;
+  minutes?: number;
+  date?: string;
+  source?: "manual" | "timed";
+}
+
+export interface PlayTimer {
+  gameId: string;
+  startedAt: string;
+  launched: boolean;
 }
 
 export interface ConfirmOptions {
@@ -41,9 +58,20 @@ interface Store {
   /** Asks "why did you drop it?" / "how was it?" after a single game's status changes. */
   feedbackFor: { gameId: string; kind: "dropped" | "completed" } | null;
   setFeedbackFor(f: { gameId: string; kind: "dropped" | "completed" } | null): void;
-  /** Opens the "Log a play session" dialog (gameId null = choose a game). */
-  logFor: { gameId: string | null } | null;
-  setLogFor(f: { gameId: string | null } | null): void;
+  /** Opens the "Log a play session" dialog (gameId null = choose a game). A timed session arrives prefilled. */
+  logFor: LogRequest | null;
+  setLogFor(f: LogRequest | null): void;
+  /** Up Next: your own ordered queue (kept as the "Up Next" list in the database). */
+  upNext: Collection | null;
+  upNextIds: string[];
+  toggleUpNext(id: string, on?: boolean): Promise<void>;
+  reorderUpNext(ids: string[]): Promise<void>;
+  /** The game you pressed Play on, and when (kept until you stop it, even across restarts). */
+  timer: PlayTimer | null;
+  /** Launches through the game's launcher when it has one, and starts timing the session. */
+  play(id: string): Promise<void>;
+  stopTimer(): void;
+  discardTimer(): Promise<void>;
   reloadAll(): Promise<void>;
   reloadCollections(): Promise<void>;
   updateGame(id: string, patch: GamePatch): Promise<void>;
@@ -63,39 +91,43 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 
-const LS_THEME = "rewind.theme";
 const LS_SCALE = "rewind.scale";
-const LS_DENSITY = "rewind.density";
 
-/** Applied before React renders so the window never flashes the wrong theme. */
-export function applyEarlyTheme() {
+/** Applied before React renders so the window never flashes at the wrong text size. */
+export function applyEarlyLook() {
   try {
-    const t = localStorage.getItem(LS_THEME);
-    if (t) document.documentElement.dataset.skin = t;
-    const s = localStorage.getItem(LS_SCALE);
-    if (s) document.documentElement.style.setProperty("--scale", s);
-    const d = localStorage.getItem(LS_DENSITY);
-    if (d) document.documentElement.dataset.density = d;
+    const sc = localStorage.getItem(LS_SCALE);
+    if (sc) document.documentElement.style.setProperty("--scale", sc);
   } catch {
     /* storage unavailable: defaults apply */
   }
 }
 
 function applyLook(s: AppSettings) {
-  document.documentElement.dataset.skin = s.theme;
-  document.documentElement.dataset.density = s.density;
   document.documentElement.style.setProperty("--scale", String(s.uiScale));
   try {
-    localStorage.setItem(LS_THEME, s.theme);
     localStorage.setItem(LS_SCALE, String(s.uiScale));
-    localStorage.setItem(LS_DENSITY, s.density);
   } catch {
     /* ignore */
   }
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const repo = useMemo(() => new Repo(createDriver()), []);
+  const repo = useMemo(
+    () =>
+      new Repo(
+        createDriver(),
+        inDesktopApp()
+          ? {
+              // Before upgrading an existing library, copy the whole database file to the backups folder.
+              beforeMigrate: async (from, to) => void (await snapshotDatabase(`before-v${to}-from-v${from}`)),
+              // API keys are encrypted with Windows DPAPI.
+              sealer: { seal: protectSecret, open: unprotectSecret },
+            }
+          : {},
+      ),
+    [],
+  );
   const [ready, setReady] = useState(false);
   const [fatal, setFatal] = useState<string | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -108,6 +140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [marks, setMarks] = useState<Map<string, Mark>>(new Map());
   const [feedbackFor, setFeedbackFor] = useState<Store["feedbackFor"]>(null);
   const [logFor, setLogFor] = useState<Store["logFor"]>(null);
+  const [timer, setTimer] = useState<PlayTimer | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmState, setConfirmState] = useState<Store["confirmState"]>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -147,8 +180,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        await repo.init();
-        const s = { ...DEFAULT_SETTINGS, ...(await repo.getSetting<Partial<AppSettings>>("app_settings", {})) };
+        const upgraded = await repo.init();
+        await repo.sealSecrets().catch(() => 0);
+        const s = normalizeSettings(await repo.getSetting<Partial<AppSettings> & Record<string, unknown>>("app_settings", {}));
+        setTimer(await repo.getSetting<PlayTimer | null>("play_timer", null));
         setSettingsState(s);
         applyLook(s);
         await reloadAll();
@@ -159,8 +194,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setInfo(appInfo);
         setReady(true);
         void ensureWindowOnScreen();
+        void smokeReport({ ok: true, schema: SCHEMA_VERSION, upgraded, games: await repo.countGames(), version: appInfo.version, dataDir: appInfo.dataDir });
       } catch (e) {
-        setFatal(e instanceof Error ? e.message : String(e));
+        const msg = e instanceof Error ? e.message : String(e);
+        setFatal(msg);
+        void smokeReport({ ok: false, error: msg });
       }
     })();
   }, [repo, reloadAll]);
@@ -273,6 +311,80 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFirstRun(false);
   }, [repo]);
 
+  const upNext = useMemo(() => findUpNext(collections), [collections]);
+  const upNextIds = useMemo(() => upNext?.gameIds ?? [], [upNext]);
+
+  const ensureUpNext = useCallback(async (): Promise<string> => {
+    const cur = findUpNext(await repo.loadCollections());
+    return cur ? cur.id : repo.createCollection("Up Next", "Games you plan to play next, in order.");
+  }, [repo]);
+
+  const toggleUpNext = useCallback(
+    async (id: string, on?: boolean) => {
+      const g = gamesRef.current.find((x) => x.id === id);
+      const has = upNextIds.includes(id);
+      const want = on ?? !has;
+      if (want === has) return;
+      await run(async () => {
+        const cid = await ensureUpNext();
+        if (want) await repo.addToCollection(cid, [id]);
+        else await repo.removeFromCollection(cid, [id]);
+        await reloadCollections();
+      }, g ? (want ? `${cleanTitle(g.title)} added to Up Next.` : `${cleanTitle(g.title)} removed from Up Next.`) : undefined);
+    },
+    [repo, run, ensureUpNext, reloadCollections, upNextIds],
+  );
+
+  const reorderUpNext = useCallback(
+    async (ids: string[]) => {
+      await run(async () => {
+        const cid = await ensureUpNext();
+        await repo.reorderCollection(cid, ids);
+        await reloadCollections();
+      });
+    },
+    [repo, run, ensureUpNext, reloadCollections],
+  );
+
+  const play = useCallback(
+    async (id: string) => {
+      const g = gamesRef.current.find((x) => x.id === id);
+      if (!g) return;
+      const target = launchTarget(g);
+      let launched = false;
+      if (target) {
+        try {
+          await launchGame(target.uri);
+          launched = true;
+        } catch (e) {
+          toast(e instanceof Error ? e.message : String(e), true);
+          return;
+        }
+      }
+      const t: PlayTimer = { gameId: id, startedAt: new Date().toISOString(), launched };
+      setTimer(t);
+      await repo.setSetting("play_timer", t).catch(() => undefined);
+      if (g.status === "backlog" || g.status === "paused" || g.status === "replay") await updateGame(id, { status: "playing" });
+      toast(launched ? `Starting ${cleanTitle(g.title)} through ${LAUNCHER_LABEL[target!.source]}. REWIND is timing the session.` : `Timing your ${cleanTitle(g.title)} session. Press Stop when you're done.`);
+    },
+    [repo, toast, updateGame],
+  );
+
+  const stopTimer = useCallback(() => {
+    setTimer((t) => {
+      if (t) {
+        const mins = Math.round((Date.now() - Date.parse(t.startedAt)) / 60000);
+        setLogFor({ gameId: t.gameId, minutes: Math.max(1, Math.min(1439, mins)), date: t.startedAt.slice(0, 10), source: "timed" });
+      }
+      return t;
+    });
+  }, []);
+
+  const discardTimer = useCallback(async () => {
+    setTimer(null);
+    await repo.setSetting("play_timer", null).catch(() => undefined);
+  }, [repo]);
+
   const confirm = useCallback(
     (o: ConfirmOptions) => new Promise<boolean>((resolve) => setConfirmState({ ...o, resolve })),
     [],
@@ -300,6 +412,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFeedbackFor,
     logFor,
     setLogFor,
+    upNext,
+    upNextIds,
+    toggleUpNext,
+    reorderUpNext,
+    timer,
+    play,
+    stopTimer,
+    discardTimer,
     reloadAll,
     reloadCollections,
     updateGame,

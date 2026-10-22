@@ -57,8 +57,7 @@ export const isSaved = (m: Mark | undefined) => !!m && (m.kind === "interested" 
 
 export const gameKey = (gameId: string) => `game:${gameId}`;
 export const igdbKey = (id: number | string) => `igdb:${id}`;
-export const modrinthKey = (id: string) => `mr:${id}`;
-export const curseKey = (id: number | string) => `cf:${id}`;
+/** Saved modpacks from REWIND 4 ("mr:…", "cf:…") are kept in the database and exports, not shown. */
 export type KeySource = "game" | "igdb" | "mr" | "cf";
 export function keySource(key: string): KeySource | null {
   const s = key.split(":")[0];

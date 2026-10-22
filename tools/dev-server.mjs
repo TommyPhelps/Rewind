@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 // Phase 3: network calls are answered by the INVENTED fake Steam/IGDB used in the tests,
 // and "downloaded" art is a generated image that says TEST ART, so nothing real is faked.
 import { fakeTransport, fakeSteamFolder, FAKE_APPS } from "../tests/fakeServices.ts";
+import { FAKE_LAUNCHERS } from "../tests/fixtures/launchers.ts";
 
 const net = fakeTransport({ failAfter: process.env.REWIND_DEV_OFFLINE ? 0 : undefined });
 const artDir = mkdtempSync(join(tmpdir(), "rewind-art-"));
@@ -38,6 +39,14 @@ const asyncOps = {
   },
   art_missing: async ({ files }) => files.filter((f) => !existsSync(join(artDir, f.replace(/^artwork\//, "")))),
   steam_local: async () => fakeSteamFolder(),
+  // Representative launcher data (see tests/fixtures/launchers.ts); only the launchers asked for.
+  launchers: async ({ which }) => {
+    const out = { epic: { detected: false, manifestsDir: null, manifests: [], error: null }, ubisoft: { detected: false, launcherDir: null, installs: [], uninstall: [], error: null }, rockstar: { detected: false, launcherDir: null, games: [], uninstall: [], error: null } };
+    for (const w of which ?? []) if (FAKE_LAUNCHERS[w]) out[w] = FAKE_LAUNCHERS[w];
+    return out;
+  },
+  launch: async ({ uri }) => { console.log("[dev] would launch", uri); return null; },
+  snapshot: async ({ label }) => `(dev) rewind-${label}.sqlite3`,
 };
 
 const ops = {

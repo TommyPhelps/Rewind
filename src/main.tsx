@@ -1,12 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "./fonts.ts";
-import "./styles/themes.css";
+import "./styles/tokens.css";
 import "./styles/app.css";
-import { AppProvider, applyEarlyTheme } from "./state/store.tsx";
+import { AppProvider, applyEarlyLook } from "./state/store.tsx";
 import { App } from "./App.tsx";
 
-applyEarlyTheme();
+applyEarlyLook();
 
 // The desktop app has no reason to show the browser's own context menu.
 window.addEventListener("contextmenu", (e) => {

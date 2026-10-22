@@ -61,6 +61,7 @@ const ENUMS: Record<string, Record<string, string[]>> = {
   mod_profiles: { status: ["planning", "active", "paused", "finished", "retired"] },
   mod_notes: { kind: ["compat", "setup", "issue", "tip"], status: ["open", "resolved"] },
   mod_runs: { status: ["active", "paused", "finished", "abandoned"] },
+  game_sources: { source: ["steam", "epic", "ubisoft", "rockstar", "gog", "other"] },
 };
 
 const REQUIRED: Record<BackupTable, string[]> = {
@@ -81,6 +82,7 @@ const REQUIRED: Record<BackupTable, string[]> = {
   mod_notes: ["id", "profile_id"],
   mod_checklist: ["id", "profile_id", "text"],
   mod_runs: ["id", "profile_id"],
+  game_sources: ["game_id", "source"],
 };
 
 export type ValidationResult = { ok: true; backup: RewindBackup; warnings: string[] } | { ok: false; errors: string[] };
@@ -141,7 +143,7 @@ export function validateBackup(obj: unknown): ValidationResult {
   // Child rows must point at games in the same file.
   if (!errors.length) {
     const ids = new Set((data.games as Row[]).map((g) => String(g.id)));
-    for (const t of ["game_lengths", "game_tags", "collection_games", "playthroughs", "sessions"] as const) {
+    for (const t of ["game_lengths", "game_tags", "collection_games", "playthroughs", "sessions", "game_sources"] as const) {
       const orphans = (data[t] as Row[]).filter((r) => !ids.has(String(r.game_id))).length;
       if (orphans) warnings.push(`${orphans} ${t} row(s) refer to games not in the file and will be skipped.`);
     }
@@ -295,7 +297,7 @@ export async function applyRestore(repo: Repo, backup: RewindBackup, mode: "merg
       });
     }
   }
-  for (const t of ["game_lengths", "game_tags", "game_meta", "playthroughs", "sessions"] as const) {
+  for (const t of ["game_lengths", "game_tags", "game_meta", "playthroughs", "sessions", "game_sources"] as const) {
     for (const row of d[t] ?? []) {
       if (!gameIds.has(String(row.game_id))) continue;
       stmts.push(repo.insertStatement(t, { ...row, game_id: remap(row.game_id) }, "ignore"));

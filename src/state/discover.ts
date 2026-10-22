@@ -46,7 +46,7 @@ export async function runBeyond(repo: Repo, games: Game[], taste: TasteModel, pr
   if (state.running) return;
   const creds = await igdbCreds(repo);
   if (!creds) {
-    emit({ hasCreds: false, error: "Add your IGDB (Twitch) Client ID and Secret under Steam & metadata → Connections first." });
+    emit({ hasCreds: false, error: "Add your IGDB (Twitch) Client ID and Secret in Settings → Connections → IGDB first." });
     return;
   }
   ctrl = new AbortController();
