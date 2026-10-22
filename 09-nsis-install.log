@@ -1,9 +1,9 @@
 total 10340
-drwxr-xr-x 1 runneradmin 197121        0 Oct 22 10:04 .
-drwxr-xr-x 1 runneradmin 197121        0 Oct 22 10:04 ..
--rwxr-xr-x 1 runneradmin 197121 10501120 Oct 22 10:03 rewind.exe
--rwxr-xr-x 1 runneradmin 197121    79236 Oct 22 10:04 uninstall.exe
+drwxr-xr-x 1 runneradmin 197121        0 Oct 22 10:17 .
+drwxr-xr-x 1 runneradmin 197121        0 Oct 22 10:17 ..
+-rwxr-xr-x 1 runneradmin 197121 10501120 Oct 22 10:16 rewind.exe
+-rwxr-xr-x 1 runneradmin 197121    79236 Oct 22 10:17 uninstall.exe
 installed: /c/Users/runneradmin/AppData/Local/REWIND/rewind.exe
-[1022/100433.141:ERROR:ui\gfx\win\window_impl.cc:172] Failed to unregister class Chrome_WidgetWin_0. Error = 1412
+[1022/101729.227:ERROR:ui\gfx\win\window_impl.cc:172] Failed to unregister class Chrome_WidgetWin_0. Error = 1412
 {"dataDir":"C:\\Users\\runneradmin\\AppData\\Roaming\\dev.tommy.rewind","games":60,"ok":true,"schema":5,"upgraded":[],"version":"5.0.0"}
 NSIS OK: installed, started on the upgraded library, uninstalled, library kept

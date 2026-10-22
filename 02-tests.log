@@ -3,632 +3,632 @@
 > node --test "tests/*.test.ts"
 
 TAP version 13
-# (node:3936) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:7880) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: library categories: each explains itself and only uses your library without IGDB
 ok 1 - library categories: each explains itself and only uses your library without IGDB
   ---
-  duration_ms: 219.3509
+  duration_ms: 80.0991
   type: 'test'
   ...
 # Subtest: short category respects your threshold and never lists endless games
 ok 2 - short category respects your threshold and never lists endless games
   ---
-  duration_ms: 36.3345
+  duration_ms: 33.6483
   type: 'test'
   ...
 # Subtest: 'Not interested' hides an item for a while, longer each time, then it comes back
 ok 3 - 'Not interested' hides an item for a while, longer each time, then it comes back
   ---
-  duration_ms: 42.5444
+  duration_ms: 60.4826
   type: 'test'
   ...
 # Subtest: answers never change your library: wishlist / played are only remembered
 ok 4 - answers never change your library: wishlist / played are only remembered
   ---
-  duration_ms: 29.6991
+  duration_ms: 101.6299
   type: 'test'
   ...
 # Subtest: Want to try lifts a game in Pick for me and says why
 ok 5 - Want to try lifts a game in Pick for me and says why
   ---
-  duration_ms: 28.8029
+  duration_ms: 68.2004
   type: 'test'
   ...
 # Subtest: beyond the library: IGDB candidates, owned games recognised, adult content filtered
 ok 6 - beyond the library: IGDB candidates, owned games recognised, adult content filtered
   ---
-  duration_ms: 126.6353
+  duration_ms: 117.2366
   type: 'test'
   ...
 # Subtest: beyond the library: wrong keys and offline are handled with clear messages
 ok 7 - beyond the library: wrong keys and offline are handled with clear messages
   ---
-  duration_ms: 52.565
+  duration_ms: 27.0271
   type: 'test'
   ...
 # Subtest: Discover prefs: bad saved values fall back safely
 ok 8 - Discover prefs: bad saved values fall back safely
   ---
-  duration_ms: 1.2492
+  duration_ms: 1.0308
   type: 'test'
   ...
 # Subtest: hiddenUntil reads the date from your last answer
 ok 9 - hiddenUntil reads the date from your last answer
   ---
-  duration_ms: 0.4336
+  duration_ms: 0.5406
   type: 'test'
   ...
-# (node:6252) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:848) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: Epic manifests: games with launch links; DLC, broken installs, tools and unreadable files skipped
 ok 10 - Epic manifests: games with launch links; DLC, broken installs, tools and unreadable files skipped
   ---
-  duration_ms: 24.2705
+  duration_ms: 29.7237
   type: 'test'
   ...
 # Subtest: Ubisoft Connect and Rockstar: names from Windows' installed-programs list, launcher itself skipped
 ok 11 - Ubisoft Connect and Rockstar: names from Windows' installed-programs list, launcher itself skipped
   ---
-  duration_ms: 1.1642
+  duration_ms: 1.2757
   type: 'test'
   ...
 # Subtest: launch links: only well-formed launcher links are allowed
 ok 12 - launch links: only well-formed launcher links are allowed
   ---
-  duration_ms: 10.7043
+  duration_ms: 0.4912
   type: 'test'
   ...
 # Subtest: import plan: same title joins the existing entry, editions stay separate unless you combine them
 ok 13 - import plan: same title joins the existing entry, editions stay separate unless you combine them
   ---
-  duration_ms: 281.8246
+  duration_ms: 60.0256
   type: 'test'
   ...
 # Subtest: a game you choose to combine gets both launchers on one entry
 ok 14 - a game you choose to combine gets both launchers on one entry
   ---
-  duration_ms: 18.3103
+  duration_ms: 31.7919
   type: 'test'
   ...
-# (node:1820) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:6804) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: status changes set dates and log real events only
 ok 15 - status changes set dates and log real events only
   ---
-  duration_ms: 191.7512
+  duration_ms: 168.6072
   type: 'test'
   ...
 # Subtest: user length overrides the legacy estimate and can be cleared
 ok 16 - user length overrides the legacy estimate and can be cleared
   ---
-  duration_ms: 6.9926
+  duration_ms: 12.8904
   type: 'test'
   ...
 # Subtest: tags, collections and bulk edits
 ok 17 - tags, collections and bulk edits
   ---
-  duration_ms: 9.3411
+  duration_ms: 14.9577
   type: 'test'
   ...
 # Subtest: search and filters
 ok 18 - search and filters
   ---
-  duration_ms: 15.8352
+  duration_ms: 14.608
   type: 'test'
   ...
 # Subtest: backup round trip: export, validate, replace, merge
 ok 19 - backup round trip: export, validate, replace, merge
   ---
-  duration_ms: 29.1568
+  duration_ms: 19.9644
   type: 'test'
   ...
 # Subtest: validation rejects damaged or future backups
 ok 20 - validation rejects damaged or future backups
   ---
-  duration_ms: 0.5226
+  duration_ms: 0.4337
   type: 'test'
   ...
-# (node:2784) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:7428) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: filters: launcher, genre, playtime, rating and Up Next; active filters are listed for clearing
 ok 21 - filters: launcher, genre, playtime, rating and Up Next; active filters are listed for clearing
   ---
-  duration_ms: 76.3753
+  duration_ms: 60.0879
   type: 'test'
   ...
 # Subtest: combining two entries keeps all your data on one game and removes the other
 ok 22 - combining two entries keeps all your data on one game and removes the other
   ---
-  duration_ms: 25.308
+  duration_ms: 34.9472
   type: 'test'
   ...
 # Subtest: library check-up: gaps, duplicates, possible editions and suspicious store links
 ok 23 - library check-up: gaps, duplicates, possible editions and suspicious store links
   ---
-  duration_ms: 22.9393
+  duration_ms: 34.2332
   type: 'test'
   ...
 # Subtest: sessions: timed sessions are labelled, and any session can be corrected
 ok 24 - sessions: timed sessions are labelled, and any session can be corrected
   ---
-  duration_ms: 16.8348
+  duration_ms: 22.0105
   type: 'test'
   ...
 # Subtest: explanations are about the game: generic reasons are dropped and facts come only from its data
 ok 25 - explanations are about the game: generic reasons are dropped and facts come only from its data
   ---
-  duration_ms: 27.7217
+  duration_ms: 17.1663
   type: 'test'
   ...
-# (node:3040) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:7056) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: VDF: nested sections, escapes, comments, case-insensitive lookup
 ok 26 - VDF: nested sections, escapes, comments, case-insensitive lookup
   ---
-  duration_ms: 1.6844
+  duration_ms: 2.4438
   type: 'test'
   ...
 # Subtest: local Steam files: launched games with playtime, installed games, tools left out
 ok 27 - local Steam files: launched games with playtime, installed games, tools left out
   ---
-  duration_ms: 21.7234
+  duration_ms: 29.8804
   type: 'test'
   ...
 # Subtest: Steam store items: facts kept, nothing invented
 ok 28 - Steam store items: facts kept, nothing invented
   ---
-  duration_ms: 1.0796
+  duration_ms: 1.2743
   type: 'test'
   ...
 # Subtest: Steam search, owned games and id parsing
 ok 29 - Steam search, owned games and id parsing
   ---
-  duration_ms: 1.3857
+  duration_ms: 1.6633
   type: 'test'
   ...
 # Subtest: player modes come straight from Steam's categories
 ok 30 - player modes come straight from Steam's categories
   ---
-  duration_ms: 0.3628
+  duration_ms: 0.3696
   type: 'test'
   ...
 # Subtest: Steam user tags: only well-voted, meaningful tags become REWIND tags
 ok 31 - Steam user tags: only well-voted, meaningful tags become REWIND tags
   ---
-  duration_ms: 0.3384
+  duration_ms: 0.373
   type: 'test'
   ...
 # Subtest: IGDB: time to beat in hours, Steam cross-check
 ok 32 - IGDB: time to beat in hours, Steam cross-check
   ---
-  duration_ms: 0.4486
+  duration_ms: 0.8403
   type: 'test'
   ...
 # Subtest: title matching: editions match, sequels never do
 ok 33 - title matching: editions match, sequels never do
   ---
-  duration_ms: 2.2406
+  duration_ms: 2.9574
   type: 'test'
   ...
 # Subtest: art cache: an unchanged image keeps its downloaded file
 ok 34 - art cache: an unchanged image keeps its downloaded file
   ---
-  duration_ms: 0.5926
+  duration_ms: 0.7755
   type: 'test'
   ...
 # Subtest: network errors become plain-language kinds; rate limits wait and retry
 ok 35 - network errors become plain-language kinds; rate limits wait and retry
   ---
-  duration_ms: 2.6374
+  duration_ms: 3.0487
   type: 'test'
   ...
 # Subtest: Steam import plan: exact, edition, new, tools; nothing personal touched
 ok 36 - Steam import plan: exact, edition, new, tools; nothing personal touched
   ---
-  duration_ms: 43.5976
+  duration_ms: 71.5959
   type: 'test'
   ...
 # Subtest: Steam import: a smaller playtime from this PC never lowers Steam's figure
 ok 37 - Steam import: a smaller playtime from this PC never lowers Steam's figure
   ---
-  duration_ms: 31.3865
+  duration_ms: 32.5621
   type: 'test'
   ...
 # Subtest: Steam import conflicts: two REWIND entries with one title must be resolved by you
 ok 38 - Steam import conflicts: two REWIND entries with one title must be resolved by you
   ---
-  duration_ms: 16.7964
+  duration_ms: 19.0468
   type: 'test'
   ...
-# (node:8528) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:8012) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: canon matches the artifact's rules
 ok 39 - canon matches the artifact's rules
   ---
-  duration_ms: 1.8671
+  duration_ms: 2.4578
   type: 'test'
   ...
 # Subtest: schema migrates once and is idempotent
 ok 40 - schema migrates once and is idempotent
   ---
-  duration_ms: 5.5248
+  duration_ms: 6.7047
   type: 'test'
   ...
 # Subtest: legacy table lookup finds aliases and edition suffixes
 ok 41 - legacy table lookup finds aliases and edition suffixes
   ---
-  duration_ms: 3.552
+  duration_ms: 4.7788
   type: 'test'
   ...
 # Subtest: artifact plan: header row flagged, statuses and Up Next mapped
 ok 42 - artifact plan: header row flagged, statuses and Up Next mapped
   ---
-  duration_ms: 1.7519
+  duration_ms: 2.1745
   type: 'test'
   ...
 # Subtest: artifact import writes everything in one transaction with sources
 ok 43 - artifact import writes everything in one transaction with sources
   ---
-  duration_ms: 12.01
+  duration_ms: 19.3192
   type: 'test'
   ...
 # Subtest: re-importing merges instead of duplicating and keeps user edits
 ok 44 - re-importing merges instead of duplicating and keeps user edits
   ---
-  duration_ms: 9.4209
+  duration_ms: 12.2118
   type: 'test'
   ...
 # Subtest: a failing statement rolls back the whole import
 ok 45 - a failing statement rolls back the whole import
   ---
-  duration_ms: 7.9379
+  duration_ms: 11.1527
   type: 'test'
   ...
 # Subtest: real library export imports completely
 ok 46 - real library export imports completely # SKIP
   ---
-  duration_ms: 0.1154
+  duration_ms: 0.1278
   type: 'test'
   ...
 # Subtest: concurrent init calls share one migration
 ok 47 - concurrent init calls share one migration
   ---
-  duration_ms: 4.0603
+  duration_ms: 40.8861
   type: 'test'
   ...
 # Subtest: upgrading a Phase 1 (schema v1) library keeps every game, note and setting
 ok 48 - upgrading a Phase 1 (schema v1) library keeps every game, note and setting
   ---
-  duration_ms: 20.2266
+  duration_ms: 47.3824
   type: 'test'
   ...
-# (node:8904) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:3696) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: Up Next review on the imported queue: suggestions only, nothing changes
 ok 49 - Up Next review on the imported queue: suggestions only, nothing changes
   ---
-  duration_ms: 114.4444
+  duration_ms: 65.196
   type: 'test'
   ...
 # Subtest: after marking KOTOR Playing the review suggests removing it; dismissals are remembered
 ok 50 - after marking KOTOR Playing the review suggests removing it; dismissals are remembered
   ---
-  duration_ms: 61.8123
+  duration_ms: 61.0513
   type: 'test'
   ...
 # Subtest: series follow-ups: waiting while playing, ready once finished
 ok 51 - series follow-ups: waiting while playing, ready once finished
   ---
-  duration_ms: 35.6245
+  duration_ms: 86.0759
   type: 'test'
   ...
 # Subtest: statuses, dates and sessions persist
 ok 52 - statuses, dates and sessions persist
   ---
-  duration_ms: 18.1707
+  duration_ms: 19.8392
   type: 'test'
   ...
 # Subtest: collections: move between, reorder, remove
 ok 53 - collections: move between, reorder, remove
   ---
-  duration_ms: 29.5254
+  duration_ms: 74.1643
   type: 'test'
   ...
 # Subtest: imported KOTOR (37h of ~40h, still Backlog) is unfinished: KOTOR II waits in follow-ups
 ok 54 - imported KOTOR (37h of ~40h, still Backlog) is unfinished: KOTOR II waits in follow-ups
   ---
-  duration_ms: 15.6134
+  duration_ms: 21.735
   type: 'test'
   ...
 # Subtest: Continue where you left off skips endless and multiplayer-only games
 ok 55 - Continue where you left off skips endless and multiplayer-only games
   ---
-  duration_ms: 39.173
+  duration_ms: 25.4414
   type: 'test'
   ...
-# (node:1900) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:6692) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: touchstones still hold with Steam data loaded
 ok 56 - touchstones still hold with Steam data loaded
   ---
-  duration_ms: 163.4384
+  duration_ms: 217.972
   type: 'test'
   ...
 # Subtest: store-derived tags count less than your own
 ok 57 - store-derived tags count less than your own
   ---
-  duration_ms: 86.2058
+  duration_ms: 99.0862
   type: 'test'
   ...
 # Subtest: a 1★ rating outweighs every store label
 ok 58 - a 1★ rating outweighs every store label
   ---
-  duration_ms: 80.3714
+  duration_ms: 210.2408
   type: 'test'
   ...
 # Subtest: explanations name the developer link and the metadata source
 ok 59 - explanations name the developer link and the metadata source
   ---
-  duration_ms: 108.5228
+  duration_ms: 89.7758
   type: 'test'
   ...
-# (node:8604) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:2824) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: never suggests multiplayer-dependent games or tools when solo-only
 ok 60 - never suggests multiplayer-dependent games or tools when solo-only
   ---
-  duration_ms: 56.2516
+  duration_ms: 83.8337
   type: 'test'
   ...
 # Subtest: Kenshi, Project Zomboid and Skyrim are deprioritised but never banned
 ok 61 - Kenshi, Project Zomboid and Skyrim are deprioritised but never banned
   ---
-  duration_ms: 23.4256
+  duration_ms: 30.3117
   type: 'test'
   ...
 # Subtest: time spent is not enjoyment
 ok 62 - time spent is not enjoyment
   ---
-  duration_ms: 23.3148
+  duration_ms: 22.6371
   type: 'test'
   ...
 # Subtest: burnout on Cyberpunk and Skyrim doesn't count against story RPGs
 ok 63 - burnout on Cyberpunk and Skyrim doesn't count against story RPGs
   ---
-  duration_ms: 40.4022
+  duration_ms: 41.7782
   type: 'test'
   ...
 # Subtest: KOTOR at 37h of ~40h counts as unfinished, so KOTOR II waits for it
 ok 64 - KOTOR at 37h of ~40h counts as unfinished, so KOTOR II waits for it
   ---
-  duration_ms: 26.8322
+  duration_ms: 43.9503
   type: 'test'
   ...
 # Subtest: strong story + long-term favours story RPGs over sandboxes and replays
 ok 65 - strong story + long-term favours story RPGs over sandboxes and replays
   ---
-  duration_ms: 18.4117
+  duration_ms: 81.9747
   type: 'test'
   ...
 # Subtest: mechanical mastery + high energy picks souls-likes you haven't finished
 ok 66 - mechanical mastery + high energy picks souls-likes you haven't finished
   ---
-  duration_ms: 17.9489
+  duration_ms: 43.301
   type: 'test'
   ...
 # Subtest: cozy + low energy + under 30 minutes stays gentle
 ok 67 - cozy + low energy + under 30 minutes stays gentle
   ---
-  duration_ms: 32.6555
+  duration_ms: 48.8948
   type: 'test'
   ...
 # Subtest: avoid list: aimless sandbox and grinding push survival sandboxes down
 ok 68 - avoid list: aimless sandbox and grinding push survival sandboxes down
   ---
-  duration_ms: 29.165
+  duration_ms: 48.1887
   type: 'test'
   ...
 # Subtest: passing lowers a game temporarily, explains why, and fades
 ok 69 - passing lowers a game temporarily, explains why, and fades
   ---
-  duration_ms: 54.7334
+  duration_ms: 40.3523
   type: 'test'
   ...
 # Subtest: hide recently passed removes them for the week
 ok 70 - hide recently passed removes them for the week
   ---
-  duration_ms: 38.8894
+  duration_ms: 26.2997
   type: 'test'
   ...
 # Subtest: your ratings change what's recommended
 ok 71 - your ratings change what's recommended
   ---
-  duration_ms: 35.4823
+  duration_ms: 54.1854
   type: 'test'
   ...
 # Subtest: owned games beat an equal wishlist game
 ok 72 - owned games beat an equal wishlist game
   ---
-  duration_ms: 20.937
+  duration_ms: 24.8061
   type: 'test'
   ...
 # Subtest: deterministic: same input, same ranking; Surprise me is seeded
 ok 73 - deterministic: same input, same ranking; Surprise me is seeded
   ---
-  duration_ms: 27.8673
+  duration_ms: 33.7767
   type: 'test'
   ...
 # Subtest: every result explains itself and labels estimates
 ok 74 - every result explains itself and labels estimates
   ---
-  duration_ms: 21.5937
+  duration_ms: 34.843
   type: 'test'
   ...
 # Subtest: reference data never overwrites your own edits
 ok 75 - reference data never overwrites your own edits
   ---
-  duration_ms: 21.5746
+  duration_ms: 51.3379
   type: 'test'
   ...
 # Subtest: 'something completely different' avoids games you already know
 ok 76 - 'something completely different' avoids games you already know
   ---
-  duration_ms: 40.1213
+  duration_ms: 70.4395
   type: 'test'
   ...
 # Subtest: Continue: only the game(s) you're playing
 ok 77 - Continue: only the game(s) you're playing
   ---
-  duration_ms: 70.1909
+  duration_ms: 27.6867
   type: 'test'
   ...
 # Subtest: a sequel waits while you're still playing the game before it
 ok 78 - a sequel waits while you're still playing the game before it
   ---
-  duration_ms: 27.1447
+  duration_ms: 42.6432
   type: 'test'
   ...
 # Subtest: once the first game is finished, the sequel becomes the natural follow-up
 ok 79 - once the first game is finished, the sequel becomes the natural follow-up
   ---
-  duration_ms: 16.3079
+  duration_ms: 23.4278
   type: 'test'
   ...
 # Subtest: Resume: paused and part-played games only
 ok 80 - Resume: paused and part-played games only
   ---
-  duration_ms: 24.2502
+  duration_ms: 24.5718
   type: 'test'
   ...
 # Subtest: Start new: nothing you've already started
 ok 81 - Start new: nothing you've already started
   ---
-  duration_ms: 16.9074
+  duration_ms: 15.5306
   type: 'test'
   ...
 # Subtest: Replay: familiar games you loved come first
 ok 82 - Replay: familiar games you loved come first
   ---
-  duration_ms: 23.4322
+  duration_ms: 22.8331
   type: 'test'
   ...
 # Subtest: long dialogue-heavy RPGs are not treated as low-energy picks
 ok 83 - long dialogue-heavy RPGs are not treated as low-energy picks
   ---
-  duration_ms: 21.3217
+  duration_ms: 27.3427
   type: 'test'
   ...
 # Subtest: saved v2.1 sessions are read correctly
 ok 84 - saved v2.1 sessions are read correctly
   ---
-  duration_ms: 0.2925
+  duration_ms: 0.498
   type: 'test'
   ...
-# (node:6404) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:10164) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: full sync: links by exact title, sends close calls to review, fetches data and covers
 ok 85 - full sync: links by exact title, sends close calls to review, fetches data and covers
   ---
-  duration_ms: 90.7618
+  duration_ms: 137.9349
   type: 'test'
   ...
 # Subtest: sync only fills estimates: your own player-mode choice, tags and lengths are never overwritten
 ok 86 - sync only fills estimates: your own player-mode choice, tags and lengths are never overwritten
   ---
-  duration_ms: 128.7018
+  duration_ms: 105.8509
   type: 'test'
   ...
 # Subtest: going offline mid-sync keeps everything fetched so far and marks nothing as failed
 ok 87 - going offline mid-sync keeps everything fetched so far and marks nothing as failed
   ---
-  duration_ms: 77.371
+  duration_ms: 113.8043
   type: 'test'
   ...
 # Subtest: cancelling stops promptly and keeps progress
 ok 88 - cancelling stops promptly and keeps progress
   ---
-  duration_ms: 26.0175
+  duration_ms: 51.2077
   type: 'test'
   ...
 # Subtest: two library games with the same normalised title are never auto-linked to the other's Steam page
 ok 89 - two library games with the same normalised title are never auto-linked to the other's Steam page
   ---
-  duration_ms: 53.6457
+  duration_ms: 98.7621
   type: 'test'
   ...
 # Subtest: a game played recently is still in progress even past its estimate (KOTOR, 41h of ~40h)
 ok 90 - a game played recently is still in progress even past its estimate (KOTOR, 41h of ~40h)
   ---
-  duration_ms: 26.7797
+  duration_ms: 49.9885
   type: 'test'
   ...
 # Subtest: review queue: you pick, reject, or reset; links are never duplicated
 ok 91 - review queue: you pick, reject, or reset; links are never duplicated
   ---
-  duration_ms: 64.7169
+  duration_ms: 120.1313
   type: 'test'
   ...
 # Subtest: IGDB (optional): time to beat stored as labelled lengths; your own length still wins
 ok 92 - IGDB (optional): time to beat stored as labelled lengths; your own length still wins
   ---
-  duration_ms: 55.254
+  duration_ms: 66.3339
   type: 'test'
   ...
 # Subtest: IGDB with a wrong secret: skipped with a clear message; Steam still syncs
 ok 93 - IGDB with a wrong secret: skipped with a clear message; Steam still syncs
   ---
-  duration_ms: 43.1546
+  duration_ms: 45.9758
   type: 'test'
   ...
 # Subtest: artwork missing from disk (e.g. backup restored elsewhere) is downloaded again
 ok 94 - artwork missing from disk (e.g. backup restored elsewhere) is downloaded again
   ---
-  duration_ms: 45.5502
+  duration_ms: 60.2363
   type: 'test'
   ...
 # Subtest: backups include links and metadata but never API keys; restore keeps them
 ok 95 - backups include links and metadata but never API keys; restore keeps them
   ---
-  duration_ms: 47.1501
+  duration_ms: 63.604
   type: 'test'
   ...
 # Subtest: upgrading a 2.5 (schema v2) library to v3 keeps every game, note, queue and recommendation
 ok 96 - upgrading a 2.5 (schema v2) library to v3 keeps every game, note, queue and recommendation
   ---
-  duration_ms: 6.1288
+  duration_ms: 7.1867
   type: 'test'
   ...
-# (node:5088) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (node:6748) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: v4 → v5 keeps every game and personal field, records Steam ownership, and turns collections into tags
 ok 97 - v4 → v5 keeps every game and personal field, records Steam ownership, and turns collections into tags
   ---
-  duration_ms: 12.392
+  duration_ms: 14.1708
   type: 'test'
   ...
 # Subtest: modding records from REWIND 4 are kept and can be exported
 ok 98 - modding records from REWIND 4 are kept and can be exported
   ---
-  duration_ms: 29.8505
+  duration_ms: 47.8866
   type: 'test'
   ...
 # Subtest: backups: v5 round trip with launcher rows and old modding data; v4 and v3 backups still restore
 ok 99 - backups: v5 round trip with launcher rows and old modding data; v4 and v3 backups still restore
   ---
-  duration_ms: 30.5617
+  duration_ms: 38.305
   type: 'test'
   ...
 # Subtest: the upgrade copies the database first, and refuses to upgrade if the copy fails
 ok 100 - the upgrade copies the database first, and refuses to upgrade if the copy fails
   ---
-  duration_ms: 14.6031
+  duration_ms: 18.5931
   type: 'test'
   ...
 # Subtest: stored keys: plain-text keys from REWIND 4 are encrypted; nothing readable stays in the database
 ok 101 - stored keys: plain-text keys from REWIND 4 are encrypted; nothing readable stays in the database
   ---
-  duration_ms: 5.8406
+  duration_ms: 8.2233
   type: 'test'
   ...
 1..101
@@ -639,4 +639,4 @@ ok 101 - stored keys: plain-text keys from REWIND 4 are encrypted; nothing reada
 # cancelled 0
 # skipped 1
 # todo 0
-# duration_ms 3114.2438
+# duration_ms 3233.8592

@@ -1,1 +1,62 @@
-ls: cannot access '/c/Program Files/REWIND': No such file or directory
+install exit code: 0
+installed exe: 
+Property(S): UserSID = S-1-5-21-4239583824-265399229-1323058055-500
+Property(S): UserLanguageID = 1033
+Property(S): ComputerName = runnervm0xl3a
+Property(S): SystemLanguageID = 1033
+Property(S): ScreenX = 1024
+Property(S): ScreenY = 768
+Property(S): CaptionHeight = 23
+Property(S): BorderTop = 1
+Property(S): BorderSide = 1
+Property(S): TextHeight = 16
+Property(S): TextInternalLeading = 3
+Property(S): ColorBits = 32
+Property(S): TTCSupport = 1
+Property(S): Time = 10:20:53
+Property(S): Date = 10/22/2026
+Property(S): MsiNetAssemblySupport = 4.8.9221.0
+Property(S): MsiWin32AssemblySupport = 6.3.26100.33438
+Property(S): RedirectedDllSupport = 2
+Property(S): MsiRunningElevated = 1
+Property(S): Privileged = 1
+Property(S): DATABASE = C:\Windows\Installer\c50c5.msi
+Property(S): OriginalDatabase = D:\a\Rewind\Rewind\out\REWIND-x64.msi
+Property(S): UILevel = 2
+Property(S): ACTION = INSTALL
+Property(S): ROOTDRIVE = D:\
+Property(S): CostingComplete = 1
+Property(S): OutOfDiskSpace = 0
+Property(S): OutOfNoRbDiskSpace = 0
+Property(S): PrimaryVolumeSpaceAvailable = 0
+Property(S): PrimaryVolumeSpaceRequired = 0
+Property(S): PrimaryVolumeSpaceRemaining = 0
+Property(S): INSTALLLEVEL = 1
+Property(S): SOURCEDIR = D:\a\Rewind\Rewind\out\
+Property(S): SourcedirProduct = {64C2F670-7497-4100-9504-AA236C1E0D9E}
+Property(S): ProductToBeRegistered = 1
+MSI (s) (FC:88) [10:20:53:110]: Note: 1: 1707 
+MSI (s) (FC:88) [10:20:53:110]: Note: 1: 2205 2:  3: Error 
+MSI (s) (FC:88) [10:20:53:110]: Note: 1: 2228 2:  3: Error 4: SELECT `Message` FROM `Error` WHERE `Error` = 1707 
+MSI (s) (FC:88) [10:20:53:110]: Note: 1: 2205 2:  3: Error 
+MSI (s) (FC:88) [10:20:53:110]: Note: 1: 2228 2:  3: Error 4: SELECT `Message` FROM `Error` WHERE `Error` = 1709 
+MSI (s) (FC:88) [10:20:53:110]: Product: REWIND -- Installation completed successfully.
+
+MSI (s) (FC:88) [10:20:53:111]: Windows Installer installed the product. Product Name: REWIND. Product Version: 5.0.0. Product Language: 1033. Manufacturer: Tommy. Installation success or error status: 0.
+
+MSI (s) (FC:88) [10:20:53:114]: Deferring clean up of packages/files, if any exist
+MSI (s) (FC:88) [10:20:53:116]: MainEngineThread is returning 0
+MSI (s) (FC:A0) [10:20:53:118]: RESTART MANAGER: Session closed.
+MSI (s) (FC:A0) [10:20:53:118]: No System Restore sequence number for this installation.
+=== Logging stopped: 10/22/2026  10:20:53 ===
+MSI (s) (FC:A0) [10:20:53:126]: User policy value 'DisableRollback' is 0
+MSI (s) (FC:A0) [10:20:53:126]: Machine policy value 'DisableRollback' is 0
+MSI (s) (FC:A0) [10:20:53:126]: Incrementing counter to disable shutdown. Counter after increment: 0
+MSI (s) (FC:A0) [10:20:53:126]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\Rollback\Scripts 3: 2 
+MSI (s) (FC:A0) [10:20:53:130]: Note: 1: 2265 2:  3: -2147287035 
+MSI (s) (FC:A0) [10:20:53:130]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\Rollback\Scripts 3: 2 
+MSI (s) (FC:A0) [10:20:53:130]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+MSI (c) (AC:BC) [10:20:53:132]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+MSI (c) (AC:BC) [10:20:53:132]: MainEngineThread is returning 0
+=== Verbose logging stopped: 10/22/2026  10:20:53 ===
+

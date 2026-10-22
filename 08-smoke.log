@@ -1,7 +1,7 @@
 made a schema 4 library with 60 games at C:\Users\runneradmin\AppData\Roaming\dev.tommy.rewind\rewind.sqlite3
-(node:7276) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(node:8528) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
 report: {"dataDir":"C:\\Users\\runneradmin\\AppData\\Roaming\\dev.tommy.rewind","games":60,"ok":true,"schema":5,"upgraded":[5],"version":"5.0.0"}
-SMOKE OK: started, upgraded 4 → 5 with a safety copy (rewind-before-v5-from-v4-1792663457.sqlite3), 60 games intact, key encrypted
-(node:6764) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+SMOKE OK: started, upgraded 4 → 5 with a safety copy (rewind-before-v5-from-v4-1792664242.sqlite3), 60 games intact, key encrypted
+(node:9812) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
