@@ -26,6 +26,11 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 # HTTPS for Steam / IGDB lookups and artwork downloads (rustls: no OpenSSL to install).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "charset"] }
 
+# Windows-only: launcher registry entries (Ubisoft Connect, Rockstar) and DPAPI for stored keys.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
 [profile.release]
 codegen-units = 1
 lto = true

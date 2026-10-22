@@ -1,5 +1,7 @@
 mod db;
+mod launchers;
 mod net;
+mod secrets;
 mod steam_local;
 
 use serde::Serialize;
@@ -75,6 +77,17 @@ async fn app_info(app: tauri::AppHandle) -> Result<AppInfo, String> {
     })
 }
 
+/// Automated start-up check (used by CI): when REWIND_SMOKE_OUT is set, the front end
+/// reports what it loaded once it's ready, the report is written there, and the app quits.
+/// Without the variable this does nothing.
+#[tauri::command]
+async fn smoke_report(app: tauri::AppHandle, report: serde_json::Value) -> Result<bool, String> {
+    let Ok(out) = std::env::var("REWIND_SMOKE_OUT") else { return Ok(false) };
+    std::fs::write(&out, serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    app.exit(0);
+    Ok(true)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -103,7 +116,13 @@ pub fn run() {
             net::art_stats,
             net::delete_art,
             net::art_missing,
-            steam_local::steam_local_scan
+            steam_local::steam_local_scan,
+            launchers::launcher_scan,
+            launchers::launch_game,
+            secrets::secret_protect,
+            secrets::secret_unprotect,
+            db::db_snapshot,
+            smoke_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running REWIND");

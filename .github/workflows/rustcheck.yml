@@ -1,0 +1,31 @@
+name: Rust check (dev)
+on:
+  push:
+    branches: [rustcheck]
+jobs:
+  rust:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+      - name: cargo test
+        run: |
+          mkdir -p dist && echo '<!doctype html><title>x</title>' > dist/index.html
+          cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee rust.log
+      - name: Save log
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp rust.log "$RUNNER_TEMP/rust.log" || true
+          cd "$RUNNER_TEMP" && rm -rf r && mkdir r && cd r && git init -q && cp ../rust.log . 
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com add . && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm log
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/rustcheck-logs

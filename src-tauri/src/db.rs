@@ -126,3 +126,54 @@ pub async fn db_batch(state: tauri::State<'_, Db>, statements: Vec<Stmt>) -> Res
     let mut conn = state.0.lock().map_err(lock_err)?;
     run_batch(&mut conn, &statements).map_err(|e| e.to_string())
 }
+
+/// Copies the whole database (a consistent snapshot, including anything still in the WAL)
+/// into `<app data>/backups/rewind-<label>-<time>.sqlite3`. Taken automatically before a
+/// schema upgrade, so the previous version's data can always be recovered.
+pub fn snapshot_to(conn: &Connection, dir: &Path, label: &str) -> Result<std::path::PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let safe: String = label.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')).take(40).collect();
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let path = dir.join(format!("rewind-{}-{}.sqlite3", if safe.is_empty() { "snapshot" } else { &safe }, secs));
+    let target = path.to_string_lossy().into_owned();
+    conn.execute("VACUUM INTO ?1", [target]).map_err(|e| format!("Couldn't save a database snapshot: {e}"))?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn db_snapshot(app: tauri::AppHandle, state: tauri::State<'_, Db>, label: String) -> Result<String, String> {
+    use tauri::Manager;
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("backups");
+    let conn = state.0.lock().map_err(lock_err)?;
+    snapshot_to(&conn, &dir, &label).map(|p| p.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_is_all_or_nothing_and_snapshot_copies_everything() {
+        let dir = std::env::temp_dir().join(format!("rewind-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = open(&dir.join("t.sqlite3")).unwrap();
+        conn.execute_batch("CREATE TABLE g (id TEXT PRIMARY KEY, title TEXT NOT NULL)").unwrap();
+        let ok = vec![Stmt { sql: "INSERT INTO g VALUES (?, ?)".into(), params: vec![Json::from("a"), Json::from("Deus Ex")] }];
+        assert_eq!(run_batch(&mut conn, &ok).unwrap(), 1);
+        let bad = vec![
+            Stmt { sql: "INSERT INTO g VALUES (?, ?)".into(), params: vec![Json::from("b"), Json::from("Thief")] },
+            Stmt { sql: "INSERT INTO g VALUES (?, ?)".into(), params: vec![Json::from("a"), Json::from("dup")] },
+        ];
+        assert!(run_batch(&mut conn, &bad).is_err());
+        let rows = select_rows(&conn, "SELECT id FROM g ORDER BY id", &[]).unwrap();
+        assert_eq!(rows.len(), 1, "failed batch rolled back");
+        let snap = snapshot_to(&conn, &dir.join("backups"), "before-v5").unwrap();
+        let copy = Connection::open(&snap).unwrap();
+        let n: i64 = copy.query_row("SELECT COUNT(*) FROM g", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 1);
+        drop(copy);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
