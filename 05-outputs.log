@@ -1,8 +1,8 @@
-total 14024
-drwxr-xr-x 1 runneradmin 197121        0 Oct 16 18:13 .
-drwxr-xr-x 1 runneradmin 197121        0 Oct 16 18:13 ..
--rwxr-xr-x 1 runneradmin 197121  3636453 Oct 16 18:13 REWIND_4.0.0_x64-setup.exe
--rwxr-xr-x 1 runneradmin 197121 10716160 Oct 16 18:13 REWIND_4.0.0_x64_portable.exe
-49ec1ebc2220ef8efdaff1927291c336f5840d55e8e8d9492af34cd17d1bc211 *REWIND_4.0.0_x64-setup.exe
-d66985c613ca92ade203f31634a6c06ab26e19549e034c5b9292710be33264af *REWIND_4.0.0_x64_en-US.msi
-b1356cd3c703212494df0a1a2ecbe02f4ecb7259c5fec2349a90f3843e7b0043 *REWIND_4.0.0_x64_portable.exe
+total 13512
+drwxr-xr-x 1 runneradmin 197121        0 Oct 22 10:03 .
+drwxr-xr-x 1 runneradmin 197121        0 Oct 22 10:03 ..
+-rwxr-xr-x 1 runneradmin 197121 10501120 Oct 22 10:03 REWIND-portable-x64.exe
+-rwxr-xr-x 1 runneradmin 197121  3329525 Oct 22 10:03 REWIND-setup-x64.exe
+8a0fb5d9e4a0bc30949f708c20ff6924a0ff8f99ec273dcf44a50cf58a47c848 *REWIND-portable-x64.exe
+37281bb19ae6c8f6e6fcabf422f01b0c1472ba8b2ea017a9d8136162c00bce68 *REWIND-setup-x64.exe
+6b6acf4efc6057ffec04704c757c71b9e6b7a4fd1e0023e97883a588ad46e228 *REWIND-x64.msi

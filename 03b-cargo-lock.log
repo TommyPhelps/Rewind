@@ -1,1 +1,2 @@
-[1m[92m    Updating[0m crates.io index
+ src-tauri/Cargo.lock | 23 ++++++++++++++++++++++-
+ 1 file changed, 22 insertions(+), 1 deletion(-)
