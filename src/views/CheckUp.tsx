@@ -27,6 +27,7 @@ export function CheckUpDialog({ nav, onClose, onCombine }: { nav: Nav; onClose()
   const [hasIgdb, setHasIgdb] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<{ text: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     void repo.getSetting<string[]>("checkup_dismissed", []).then((d) => setDismissed(new Set(d)));
@@ -45,7 +46,10 @@ export function CheckUpDialog({ nav, onClose, onCombine }: { nav: Nav; onClose()
   const runLookup = async () => {
     const creds = useIgdb ? await igdbCreds(repo) : null;
     const r = await startSync(repo, { ...DEFAULT_SYNC, gameIds: audit.lookupIds, searchSteam: true, refreshDays: 30, igdb: creds }, reloadAll);
-    if (r) toast(r.outcome === "complete" ? `Check-up: ${r.message}` : r.message, r.outcome === "error");
+    if (r) {
+      setLastRun({ text: r.message, ok: r.outcome === "complete" });
+      toast(r.outcome === "complete" ? `Check-up: ${r.message}` : r.message, r.outcome === "error");
+    }
   };
 
   const p = sync.progress;
@@ -128,7 +132,7 @@ export function CheckUpDialog({ nav, onClose, onCombine }: { nav: Nav; onClose()
                   </label>
                 </div>
               </div>
-              {sync.last && sync.last.outcome !== "complete" && <div className="note">Last run: {sync.last.message}</div>}
+              {lastRun && <div className={"note " + (lastRun.ok ? "ok" : "bad")}>Last lookup: {lastRun.text}</div>}
             </>
           )}
           {lookup.length > 0 && (

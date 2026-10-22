@@ -1,232 +1,53 @@
-# REWIND 4.0
+# REWIND 5
 
-A personal gaming companion for Windows 11: your game library, what you're playing next, an explainable
-"what should I play tonight" picker, personal Discover shelves, Minecraft modpack discovery and a modding
-companion. Dark early-2000s look, five themes, a sibling to Nook Tracker.
+A personal gaming companion for Windows 11: your game library across Steam, Epic Games, Ubisoft
+Connect and Rockstar; what you're playing and what's next; an explainable "what should I play now";
+and Discover shelves built from your own taste. Near-black, monochrome, quiet.
 
-Everything lives in one SQLite file on your PC. No account, no server, no telemetry. It works offline.
+Everything lives in one SQLite file on your PC. No account, no server, no telemetry. It works offline;
+it only goes online when you ask it to look something up.
 
-## Status
+- **Install:** [docs/INSTALL.md](docs/INSTALL.md) (download, checksum, upgrading from REWIND 4, where data lives)
+- **What changed in 5.0:** [docs/release-notes/v5.0.0.md](docs/release-notes/v5.0.0.md)
+- **Feature checklist, what was verified and known limitations:** [docs/V5-REPORT.md](docs/V5-REPORT.md)
+- **Design system:** [docs/DESIGN.md](docs/DESIGN.md)
 
-| Phase | What | State |
-|---|---|---|
-| 0 | Inspect the old REWIND artifact, its data, and the build options | Done |
-| 1 | Tauri app, SQLite, dark Y2K design system, library import, navigation, Windows build | Built (v2.0.0) |
-| 2 | Recommendation engine: Pick for me, Friction Check, taste profile, presets | Built (v2.1.0) |
-| 2.5 | Desktop layouts, readability, Home dashboard, session intent, queues, Activity overview | Built (v2.5.0) |
-| 3 | Steam library import, game metadata, cover art, offline cache, metadata-aware recommendations | Built (v3.0.0) |
-| 4 | Discover, Minecraft modpack discovery and comparison, modding companion | **Built (v4.0.0)** |
-| 5 | Low-stimulation mode, series navigator, performance, final polish | Planned |
+## The six sections
 
-### What Phase 1 does
+| Section | Answers | Highlights |
+| --- | --- | --- |
+| Home | What am I playing, and what's next? | Currently playing (Launch, Pause, Complete), tonight's suggestion, Continue, Up Next, recent activity. Empty sections are hidden. |
+| Library | What do I own, and how is it organised? | Big search; status, source/launcher, genre, playtime, rating and favourite filters; More filters; list or covers; details drawer; Add game; Check-up; combine duplicates. |
+| Discover | What interesting games are there for me? | One shelf at a time, covers only, reasons on request, Outside my library, Saved and Hidden, series kept in order. |
+| Pick for me | What should I play right now? | What you feel like → time and energy → one game: Play, Skip or Another. More preferences folded away. |
+| Activity | What have I played and finished? | One day-by-day feed with sources; correct or delete sessions in place. |
+| Settings | Customise and manage | General, Connections (Steam, Epic, Ubisoft, Rockstar, IGDB), Recommendations, Data and backups, Keyboard and about. |
 
-- **Library**: virtualized table and cover grid (hundreds of games stay fast), search across titles,
-  tags and notes, filters (status, length, ownership, tag, collection, favorites, solo only), sorting,
-  multi-select (Ctrl/Shift click, Shift+arrows, Ctrl+A), right-click menu, bulk status / ownership /
-  favorite / tag / collection / remove.
-- **Game details panel** (resizable): status, rating (1–5), favorite, ownership, installed, players,
-  endless, notes (autosave), tags, collections, your own lengths (main / main+extras / completionist),
-  imported playtime, dates, a real per-game history.
-- **Home**: now playing, Up Next with Start buttons, library at a glance, data-quality counts, recent activity.
-- **Collections**: create, rename, describe, reorder, remove.
-- **Activity**: a log of things that actually happened (status changes, ratings, imports, restores).
-- **Settings**: 5 dark themes (Midnight 2003 default, Nook Classic, CRT Amber, Gothic Library, Monochrome),
-  text size, editable gaming profile, backup and restore.
-- **Import from the old artifact** with a full preview, then one all-or-nothing transaction.
-- **Backups**: versioned JSON, validation, preview, *merge* (never overwrites) or *replace* (confirmed),
-  and an automatic safety snapshot before every import or restore.
-- **Windows**: remembers window size/position, pulls the window back if a monitor disappears, minimum
-  size 960×600, works with display scaling, keyboard shortcuts (see Settings → Keyboard).
+## Launchers: what works
 
-### What Phase 2 adds: Pick for me
+| | Find games | Owned but not installed | Start a game | Playtime |
+| --- | --- | --- | --- | --- |
+| Steam | Steam client files on this PC, or the official Web API with your free key | Yes (Web API) | `steam://rungameid/…` | Yes, Steam's own figure |
+| Epic Games | Install records in `ProgramData\Epic\EpicGamesLauncher\Data\Manifests` | No — no public library API | `com.epicgames.launcher://apps/…?action=launch` | No — not stored on your PC |
+| Ubisoft Connect | Install list in the Windows registry | No — no public library API | `uplay://launch/<id>/0` | No |
+| Rockstar Games | Rockstar entries in the Windows registry | No | No documented link; start it from the launcher | No |
 
-A deterministic recommender (no AI service, no internet) that ranks the games you own for *this* session
-and says why.
+REWIND reads Epic, Ubisoft and Rockstar data only after you allow it (Settings → Connections), shows a
+preview before adding anything, never signs in to a launcher, never asks for a launcher password and
+never changes launcher files. A game on several launchers is one entry; editions stay separate unless
+you combine them. Playtime is never invented.
 
-- **Optional session settings**: experience (immersive, story, mastery, cozy, exploration, building,
-  strategy, nostalgic, unusual), energy, time available, commitment, structure, difficulty, things to
-  avoid, continue vs. start new. Nothing is required; the last session is remembered.
-- **Presets**: five built in (Low-energy evening, Story night, Challenge me, Quick break, Weekend deep dive)
-  plus your own.
-- **Explanations**: every suggestion lists why it fits and why it might not, a fit band (not a fake
-  percentage), confidence, commitment estimate, and where each piece of data came from. "Show scoring"
-  reveals each factor.
-- **Friction Check**: Ready to play / Something completely different / Not in the mood (take a break,
-  revisit later). No streaks, goals or penalties.
-- **Passing**: "Not this one" asks why (optional). The game is shown less for a while and the note says
-  until when; it is never banned. Reasons like "too grindy" nudge your preferences and fade after 60 days.
-  Unlimited "Next".
-- **Surprise me**: one click, picked among strong matches (seeded, so it's repeatable).
-- **Your taste**: what REWIND believes and why: tags you lean towards/away from, trait preferences with
-  their sources, how your profile lines are read, drop reasons, and a **time played vs. enjoyment** table
-  for high-playtime games with no enjoyment info, so you can answer with one click.
-- **Weights**: seven sliders, normalised before scoring.
-- When you mark a game **Dropped** it asks why (optional); **Completed** asks how it was (optional).
+## Your data
 
-How it separates time spent from enjoyment: enjoyment comes only from ratings, favorites, your profile's
-enjoyed / struggled lists, finishing, dropping and your answers. Playtime is a weak hint used only when
-nothing else is known, never for multiplayer games, and always labelled as such. "Struggled after many
-restarts / replaying" is read as burnout on that game, not a dislike of its genre.
-
-**Data quality.** 247 of the 404 imported games had no tags or player info. Phase 2 bundles a *REWIND
-reference* table (`src/data/referenceTraits.ts`) of estimated tags, player modes and length classes for
-236 of them, plus extra trait tags (guided, aimless, grind, punishing…) for well-known games. It is
-labelled `est.` everywhere, only fills unknown fields, never overwrites your edits, and is applied to a
-game only once, so anything you remove stays removed. 11 obscure titles are left unknown.
-
-### What 2.5 changes: desktop layout, readability, queues
-
-- **Layouts that use the screen.** Home, Activity and Settings are dashboards whose columns follow the
-  window width (one column in a small window, up to four at 2560×1440). Long text keeps a readable width;
-  nothing scrolls sideways at 960×600 or at 125/150/200% Windows scaling.
-- **Bigger, consistent type** on one scale, plus **Density** (Compact / Comfortable / Spacious) and text
-  size up to 150% in Settings → Appearance. Clearer status pills, focus rings and empty states.
-- **Home**: Tonight's recommendation (from your last Pick-for-me settings, with one-click intents),
-  Currently playing (log a session, pause, complete), Continue where you left off, Up Next (with a
-  review count), Series follow-ups, Recent activity, and a library overview where every number opens
-  that slice of the Library.
-- **Separate ideas, kept separate.** *Playing*, *Paused* and *Replay* are statuses you set. *Up Next* is
-  your own ordered list. *Series follow-ups*, *Continue where you left off* and *Replay candidates* are
-  automatic lists that update themselves.
-- **Hours near an estimate no longer mean "finished".** A game counts as probably finished only once your
-  hours pass the main-story estimate. KOTOR at 37h of ~40h is unfinished, so KOTOR II waits in Series
-  follow-ups instead of being suggested.
-- **Review your queue** (Collections → Up Next): suggestions such as "you're playing KOTOR now; remove
-  it from Up Next?" or "KOTOR II follows a game you haven't finished". Nothing changes until you click,
-  and "Keep as is" is remembered. Your imported statuses and queue were not touched.
-- **Session intent** in Pick for me: Anything, Continue my current game, Resume something paused, Start
-  something new, Replay something familiar, Something completely different. Sequels wait for the earlier
-  game unless you tick "Allow sequels before I finish the earlier game". Long, dialogue-heavy RPGs are no
-  longer treated as low-energy picks ("Needs steady concentration").
-- **Recommendation card**: title, fit, ownership, status and commitment up top; why it fits / why it might
-  not; confidence and data sources; "How this was scored" expands.
-- **Collections**: three panels (lists, the open list, game details), drag-and-drop or Alt+↑/↓ to
-  reorder, move to top, move to another collection, Del to remove.
-- **Activity**: play sessions you log (REWIND never invents history), recently started, completed with
-  dates, paused, recent Pick-for-me choices, and the full log with a filter.
-- **Library**: two-line rows with progress ("37h of ~40h main story · Up Next #1"), progress and
-  "needs info" filters, sort by last played or Pick-for-me fit, neutral cover placeholders (no fake art).
-- **Mods** shows your old REWIND modpack list as saved, labelled unverified. Discover stays a labelled
-  placeholder.
-
-### What Phase 3 adds: Steam, metadata and artwork
-
-Everything is on the new **Steam & metadata** screen (Ctrl+8).
-
-**Import your Steam library** (preview first, then one all-or-nothing transaction with a safety snapshot):
-- *Steam client on this PC* — reads the Steam client's own files (`localconfig.vdf`, app manifests).
-  No password, no key, works with a private profile. Sees games this account has launched or installed.
-- *Steam account (Web API)* — every owned game, via the official `IPlayerService/GetOwnedGames`.
-  Needs your free Steam Web API key (steamcommunity.com/dev/apikey) and "Game details" set to public.
-- Matching: already-linked app id → exact title → same title with edition wording → similar (shown,
-  never applied unless you choose) → new game. Two REWIND entries with one title are a conflict you
-  resolve. Tools, servers, soundtracks and test clients aren't ticked.
-- Steam's playtime is stored **separately** from the old app's figure (REWIND uses the larger) and a
-  smaller number never replaces a larger one. Ratings, notes, statuses, favourites and preferences are
-  never touched.
-
-**Details & covers** (background sync, cancellable, resumes where it stopped):
-- Links each game to Steam by app id, or by store search when the title matches exactly with no equally
-  good rival. Everything else waits in **Needs your decision** with candidates; "None of these" is
-  remembered. Titles that normalise to the same thing in your library (e.g. GTA V Legacy / Enhanced) are
-  only linked on a literal title match.
-- Store data in batches of 25 via Steam's `IStoreBrowseService/GetItems`: developers, publishers,
-  original release date, player modes, platforms, description, Steam user tags (with votes), artwork paths.
-- Artwork: the 600×900 library cover (falls back to the store header, shown centred on a blurred copy —
-  never stretched or invented), plus the header and, for games you open, the wide hero image. Cached
-  in `%APPDATA%\dev.tommy.rewind\artwork\`; missing files are fetched again on the next sync.
-- Optional **IGDB** (free Twitch Client ID + Secret): extra details and IGDB's player-submitted "time to
-  beat", stored as lengths labelled `igdb`. Your own hours always win.
-- Pacing: one store search every ~1.6 s, batched store reads, 4 image downloads at a time, retries with
-  back-off and Retry-After on rate limits. Offline: the run stops with "couldn't reach the internet" and
-  nothing already saved is lost or marked as failed.
-
-**What it changes, and what it never changes:** it adds tags mapped from well-voted Steam user tags
-(source "Steam user tags"; tags you removed are not put back), replaces *estimated* player modes with
-Steam's categories (never your own choice), adds IGDB lengths, and sets the cover unless you picked your
-own picture. Unlinking removes exactly what that link added. Title, status, rating, notes, your tags and
-your lengths are untouched; "Your corrections" fields in the details panel override store data.
-
-**Browsing:** cover grid in three sizes (S/M/L, 9–12 columns at 2560×1440) with status, Up Next position
-and playtime on each cover; small covers in list rows; filters for artwork / match state; sort by release
-year; search also matches developers and publishers. The details panel gains a banner, an *About* section
-where every fact shows its source, store links, and *Sources & artwork* to change or remove a match or use
-your own cover image.
-
-**Recommendations:** store-derived tags count at 0.6× of your own and REWIND's curated tags, so broad
-labels can't outweigh what you've told REWIND; ratings and feedback remain the strongest signals. New:
-developer affinity from games you rated or listed ("Made by BioWare, who also made STAR WARS Knights of
-the Old Republic, which you enjoyed"), Steam player modes keep multiplayer-only games out, and a game you
-played recently is never called "already played through" just because its hours passed an estimate.
-Explanations list "Details: Steam store / IGDB.com".
-
-**Keys and privacy:** the Steam key and IGDB credentials are stored only in the local database's
-`secrets` table, never in backups, and only sent to Steam or Twitch. The app only talks to an allow-list
-of Steam and IGDB hosts over HTTPS (enforced in Rust, including redirects). Nothing about your library
-is uploaded; each lookup sends only the game being looked up.
-
-**Limits, stated plainly:** Steam's store endpoints (`GetItems`, `storesearch`, `GetTagList`) are public
-and keyless but not formally documented by Valve, so they could change; `tools/probe-steam.mjs` (Actions →
-"Steam endpoint probe") re-checks them. HowLongToBeat has no public API, so REWIND only links to it.
-"Steam client on this PC" can't see owned games that were never installed or launched.
-
-### What Phase 4 adds: Discover, modpacks, modding companion
-
-**Discover** (Ctrl+3) replaces the placeholder with personal shelves: *Like your favourites*, *Forgotten
-gems in your library*, *Finish what you started*, *Deep RPG adventures*, *Early-2000s nostalgia*, *Short and
-unforgettable*, *Games worth mastering*, *Cozy but purposeful*, *Games that respect your time*, *Strong
-atmosphere* and *Something completely different*. Each shelf says exactly what qualifies a game ("How this
-works"), and every suggestion uses the same explainable scoring as Pick for me: why it fits, why it might
-not, commitment, confidence and data sources. Popularity and review scores are never used or shown.
-Discover settings (saved in the database and in backups) set the shelf order and visibility, how much room
-games you don't own get, your nostalgia years and platforms, what "short" and "deep" mean, and how long
-"Not interested" hides something.
-
-**Beyond your library** uses IGDB (the same free Twitch keys as metadata) and only when you press the
-button: IGDB's own "similar games" lists for your favourites, games from your nostalgia years on PC / PS2 /
-PS3 (your choice), role-playing games, and games with a short player-submitted time to beat. IGDB is asked
-for games with enough player ratings to be judged, but ratings are never fetched or shown; candidates are
-ranked by your taste. Games already in your library (matched by Steam app id, linked IGDB id or exact title)
-are never shown as "not owned"; adult-themed games are excluded. Results are cached for offline use. Prices
-are not shown, because REWIND doesn't track them; store pages open in your browser.
-
-**Your answers**: Interested, Want to try, Wishlisted, Already played, Not interested (keys I T W P N; press
-again to clear). They never change your library: nothing is added unless you press *Add to library…*, and
-"Already played" doesn't change a status. *Not interested* hides an item for 90 days (180 if you say it
-again, up to a year), then it comes back; on a library game it also counts as a fading pass in Pick for me.
-*Want to try* lifts a game in Pick for me. Saved games you don't own keep a snapshot (and cached cover) so
-the wishlist works offline.
-
-**Mods & Modpacks** (Ctrl+5):
-- *Modpacks*: Modrinth's public API (no key; REWIND stays far under its 300 requests/minute limit) and,
-  optionally, CurseForge's official API with your own key. Suggested packs are Modrinth's most-downloaded
-  packs in the styles you like, re-ranked by fit for you (downloads decide what's considered, never the
-  order). Every fact is labelled: *verified* (numbers, dates, versions, and the list of Modrinth-hosted mods
-  inside the pack), *the author says* (their tags and description), or *REWIND's estimate*. A pack "has a quest
-  book" only if a quest mod is in its mod list; otherwise it's "the author says" or "none found". Quest
-  quality is never rated. Labels like Beginner-friendly, Expert, Hardcore, Technical, Magical, Exploration,
-  Cozy, Kitchen sink, Lightweight and Shaders each show their evidence. Maintenance comes from release dates
-  (stale and archived packs are flagged), and packs that disappear keep their saved copy marked unavailable.
-- *What I want in a pack*: sliders for quest books, guidance, exploration, cozy building, tech, magic,
-  shaders, performance, kitchen sinks, expert and hardcore, maintenance and (capped) popularity, plus a
-  preferred Minecraft version and loader. A kitchen sink with no quest book counts as "may feel aimless".
-- *Compare*: up to four packs side by side (progression, quest book, quest quality, difficulty, complexity,
-  performance, mod count, maintenance, shaders, official page) with a short verdict on which fits you best.
-- *Your old list*: the 36 packs from the old app, matched to Modrinth by exact name only.
-- *Modding companion*: profiles for Skyrim (SE/AE and 2011), Oblivion, Oblivion Remastered, Morrowind, Mount &
-  Blade: Warband, Fallout 3 / New Vegas / 4, Minecraft or any game: mod lists (add, edit, reorder, enable,
-  paste or open MO2 `modlist.txt`, `plugins.txt` or link lists — files are only read), export as Markdown,
-  compatibility and setup notes (your notes, with an optional source link; REWIND makes no compatibility
-  claims), backup checklists with general safe steps, modded playthroughs, the mod manager you use, and
-  links to official mod sites and tools. A modpack can become a profile with its mod list. A game's page
-  shows its profiles. REWIND never touches game folders or mod-manager files.
-
-**Keys and hosts:** the Rust allow-list now also includes `api.modrinth.com`, `cdn.modrinth.com`,
-`api.curseforge.com` and `media.forgecdn.net`. The CurseForge key is stored like the others: on this PC
-only, never in backups. FTB-app-only packs aren't covered (no documented public API).
-
-**Database:** schema 4 adds `discover_marks`, `mod_profiles`, `mod_entries`, `mod_notes`, `mod_checklist` and
-`mod_runs`. All are in backups; older backups still restore, and merge keeps your newer answers.
+- `%APPDATA%\dev.tommy.rewind\rewind.sqlite3` — your library. Safety copies in `…\backups\`, artwork in
+  `…\artwork\`. Uninstalling doesn't delete them.
+- Before a database upgrade REWIND copies the whole file to `backups\rewind-before-v<new>-from-v<old>-<time>.sqlite3`;
+  if the copy fails, the upgrade doesn't run. Imports, restores, launcher imports and combining entries
+  save a JSON safety copy first.
+- Backups (Settings → Data and backups) contain everything except API keys. Backups from every earlier
+  version restore.
+- Steam and IGDB keys are encrypted with Windows DPAPI.
+- REWIND 4's modding profiles and saved modpacks are kept, with a Markdown export.
 
 ### What happened to the old app's data
 
@@ -243,55 +64,23 @@ only, never in backups. FTB-app-only packs aren't covered (no documented public 
 | Rerolls limits, penalties, awards | Not carried over (by design: no punishments, no streaks). |
 | Everything else in the old state | Stored verbatim in settings (`legacy_rewind_state`) so nothing is lost. |
 
-## Installing on Windows 11
+## Getting the installer
 
-1. Download the build (see *Getting the installer* below). You get:
-   - `REWIND_2.0.0_x64-setup.exe` — normal installer (installs for your user, no admin needed)
-   - `REWIND_2.0.0_x64_en-US.msi` — MSI installer, if you prefer
-   - `REWIND_2.0.0_x64_portable.exe` — runs without installing (uses Windows 11's built-in WebView2)
-   - `SHA256SUMS.txt` — checksums
-2. Run the setup `.exe`.
-3. On first launch choose **Import from the REWIND artifact** and pick `rewind-artifact-export-2026-10-16.json`
-   (or a fresh one from the old app's *Download backup* button). Check the preview, press **Import**.
+Releases are built by GitHub Actions on a GitHub-hosted Windows machine (**Actions → Windows build**).
+A run builds the app, the NSIS and MSI installers and a portable exe, and checks them:
 
-### About the SmartScreen warning
+1. unit and integration tests (`npm test`, real SQLite) and the strict TypeScript check,
+2. Rust tests on Windows (launch-link allow-list, DPAPI round trip, database snapshot),
+3. a start-up check: the built portable exe is started on a REWIND 4 library and must upgrade it to
+   schema 5 with a safety copy, keep all games and personal fields, encrypt the stored key and quit
+   (`tools/smoke.ts`),
+4. silent install of the NSIS installer, start of the installed app, silent uninstall that must keep the
+   library; silent install and uninstall of the MSI,
+5. SHA-256 checksums.
 
-The app isn't code-signed (a signing certificate costs money every year), so Windows may show
-"Windows protected your PC" the first time. That warning means "Microsoft doesn't recognise this
-publisher yet", not "this is malware". Before clicking **More info → Run anyway**, check:
-
-- the file came from **your own** GitHub repository's Actions run or Release, and
-- its SHA-256 matches `SHA256SUMS.txt` from the same run
-  (PowerShell: `Get-FileHash .\REWIND_2.0.0_x64-setup.exe`).
-
-If either doesn't match, don't run it. Never bypass SmartScreen for files from anywhere else.
-
-### Where your data lives
-
-`%APPDATA%\dev.tommy.rewind\rewind.sqlite3`, with safety snapshots in
-`%APPDATA%\dev.tommy.rewind\backups\`. Uninstalling the app does not delete them. Settings shows the exact paths.
-
-## Getting the installer (GitHub Actions)
-
-The installer is compiled on a free GitHub-hosted Windows machine. Nothing needs installing on your PC.
-
-1. The project lives in a private GitHub repository.
-2. Every push to `main` starts **Actions → Windows build** (or press *Run workflow*). The first run takes
-   roughly 15–25 minutes; later runs are faster because the Rust build is cached.
-3. When the run shows a green check, open it and download **REWIND-4.0.0-windows-x64** (a zip with the
-   setup `.exe`, the `.msi`, a portable `.exe` and `SHA256SUMS.txt`).
-4. Optional: push a tag like `v4.0.0` and the workflow also publishes a **Release** with the files attached.
-
-What the workflow does on its own:
-- **Lockfiles**: the first successful install commits `package-lock.json` and `src-tauri/Cargo.lock` back
-  to `main`, so later builds use exactly the same dependency versions.
-- **Logs**: full plain-text logs of every stage are saved to a `ci-logs` branch, so a failed build can be
-  diagnosed without digging through the Actions page. The branch never triggers builds and is safe to delete.
-- Each stage (tests, frontend, Rust + NSIS, MSI, type check) reports separately, and whatever installers
-  were built are uploaded even if a later stage fails.
-
-Cost: private repos on GitHub Free get 2,000 Actions minutes a month; Windows minutes count double, so
-one build uses roughly 30–50 of them.
+Pushing a tag `vX.Y.Z` (matching the app version) publishes a GitHub Release with
+`REWIND-setup-x64.exe`, `REWIND-x64.msi`, `REWIND-portable-x64.exe` and `SHA256SUMS.txt` — only if every
+check above passed. Logs of every run are kept on the `ci-logs` branch.
 
 ## Building on your own PC (optional)
 
@@ -299,33 +88,40 @@ Requires Node.js 22.18+, Rust (stable, MSVC) and the Visual Studio C++ Build Too
 
 ```powershell
 npm install
-npm test            # schema, migration, backup and filter tests on real SQLite
-npm run tauri dev   # run with hot reload
-npm run tauri build # installers in src-tauri\target\release\bundle\
+npm test             # unit and integration tests on real SQLite
+npm run typecheck
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run tauri dev    # run with hot reload
+npm run tauri build  # installers in src-tauri\target\release\bundle\
 ```
 
 ## Project layout
 
 ```
 src/
-  db/           SQLite schema + migrations, repository (all queries)
-  migrate/      old-artifact importer + its bundled reference data
-  backup/       REWIND 2 backup format: export, validate, preview, merge/replace
-  lib/          types, title matching, filtering/sorting/length rules
-  platform/     everything that talks to Windows (Tauri commands, dialogs, window placement)
-  state/        app store (React context)
-  views/ ui/    screens and components
-  styles/       themes.css (5 skins as CSS variables), app.css
-  meta/         Steam / IGDB clients, title matching, Steam import planner, metadata sync, VDF parser
-  discover/     Discover shelves, IGDB "beyond your library", answers (marks), settings
-  mods/         Modrinth + CurseForge clients, modpack evidence and fit, comparison, modding companion
-src-tauri/      Rust: rusqlite bridge with real transactions, file I/O for chosen files, safety snapshots,
-                HTTPS allow-list client + artwork cache (net.rs), Steam client file reader (steam_local.rs)
-tests/          node:test suites against node:sqlite (same SQL as the app)
-tools/          icon generator, browser preview build + dev SQL bridge, endpoint probes (development only)
+  db/           SQLite schema + migrations, repository (all queries), optional DPAPI sealer
+  backup/       backup format: export, validate, preview, merge/replace
+  migrate/      old-artifact importer + bundled reference data
+  launchers/    Epic / Ubisoft / Rockstar parsing, import plan, launch links
+  lib/          types, filters and sorting, library check-up, combining entries
+  meta/         Steam and IGDB clients, title matching, Steam import, details sync
+  rec/          recommendation engine, taste model, explanations
+  discover/     Discover shelves, IGDB "outside my library", answers
+  legacy/       REWIND 4 modding records (read-only) and their Markdown export
+  platform/     everything that talks to Windows (Tauri commands, dialogs)
+  state/ views/ ui/ styles/
+src-tauri/      Rust: SQLite bridge, file I/O, safety snapshots, HTTPS allow-list client and artwork cache,
+                Steam client reader, launcher scan + launch (launchers.rs), DPAPI (secrets.rs)
+tests/          node:test suites against node:sqlite (the same SQL as the app)
+tools/          CI start-up check (smoke.ts), icon generator, browser preview build + dev SQL bridge
+docs/           design system, install guide, release notes, v5 report
 ```
 
 ## Testing record
+
+See [docs/V5-REPORT.md](docs/V5-REPORT.md) for REWIND 5.
+
+### Earlier versions
 
 Automated (run here and in CI):
 - 102 tests (101 run here; 1 needs the real export file). Phase 4 adds: every Discover shelf explaining

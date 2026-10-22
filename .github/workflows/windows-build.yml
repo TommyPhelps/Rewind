@@ -161,18 +161,22 @@ jobs:
 
       - name: Installer check (MSI; silent install and uninstall)
         if: always() && steps.msi.outcome == 'success'
-        timeout-minutes: 5
+        timeout-minutes: 8
+        shell: pwsh
         run: |
-          set -o pipefail
-          {
-            MSI="$(cygpath -w out/REWIND-x64.msi)"
-            msiexec //i "$MSI" //qn //norestart
-            ls -la "/c/Program Files/REWIND"
-            ls "/c/Program Files/REWIND"/*.exe
-            msiexec //x "$MSI" //qn //norestart
-            [ -d "/c/Program Files/REWIND" ] && ls "/c/Program Files/REWIND"/*.exe 2>/dev/null && { echo "MSI uninstall left files"; exit 1; }
-            echo "MSI OK: installed to Program Files and removed"
-          } 2>&1 | tee "$LOGS/10-msi-install.log"
+          $log = "$env:LOGS/10-msi-install.log"
+          $msi = (Resolve-Path out/REWIND-x64.msi).Path
+          function Find-Rewind { Get-ChildItem -Path "$env:ProgramFiles", "${env:ProgramFiles(x86)}", "$env:LOCALAPPDATA\Programs" -Filter rewind.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          $p = Start-Process msiexec.exe -ArgumentList @('/i', "`"$msi`"", '/qn', '/norestart', '/l*v', "`"$env:RUNNER_TEMP\msi-install.txt`"") -Wait -PassThru
+          "install exit code: $($p.ExitCode)" | Tee-Object -FilePath $log -Append
+          $exe = Find-Rewind
+          "installed exe: $($exe.FullName)" | Tee-Object -FilePath $log -Append
+          if ($p.ExitCode -ne 0 -or -not $exe) { Get-Content "$env:RUNNER_TEMP\msi-install.txt" -Tail 60 | Tee-Object -FilePath $log -Append; exit 1 }
+          $u = Start-Process msiexec.exe -ArgumentList @('/x', "`"$msi`"", '/qn', '/norestart') -Wait -PassThru
+          "uninstall exit code: $($u.ExitCode)" | Tee-Object -FilePath $log -Append
+          if ($u.ExitCode -ne 0 -or (Test-Path $exe.FullName)) { "MSI uninstall failed or left the app behind" | Tee-Object -FilePath $log -Append; exit 1 }
+          if (-not (Test-Path "$env:APPDATA\dev.tommy.rewind\rewind.sqlite3")) { "uninstall removed the library!" | Tee-Object -FilePath $log -Append; exit 1 }
+          "MSI OK: installed to $($exe.DirectoryName), removed again, library kept" | Tee-Object -FilePath $log -Append
 
       - name: Checksums
         if: always() && steps.collect.outcome == 'success'
@@ -220,6 +224,14 @@ jobs:
             src-tauri/Cargo.lock
           if-no-files-found: ignore
 
+      - name: Summarise checks
+        if: always()
+        run: |
+          for f in "$LOGS"/02-tests.log "$LOGS"/03a-rust-tests.log "$LOGS"/08-smoke.log "$LOGS"/09-nsis-install.log "$LOGS"/10-msi-install.log; do
+            [ -f "$f" ] || continue
+            echo "::notice title=$(basename "$f")::$(grep -v '^\s*$' "$f" | tail -n 4 | tr '\n' ' ' | tr -d '\r' | cut -c1-900)"
+          done
+
       # Full plain-text logs on a separate 'ci-logs' branch so a failed build can be
       # diagnosed from the repository itself. Safe to delete; it never triggers builds.
       - name: Save logs to ci-logs branch
@@ -233,11 +245,11 @@ jobs:
           URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           cd "$RUNNER_TEMP" && rm -rf logrepo
           # Adds a commit on top of the existing logs branch (never a force-push).
-          if git clone -q --depth 1 --branch ci-logs "$URL" logrepo 2>/dev/null; then cd logrepo && git rm -rq --ignore-unmatch . ; else mkdir logrepo && cd logrepo && git init -q && git checkout -q -b ci-logs; fi
+          if git clone -q --single-branch --branch ci-logs "$URL" logrepo 2>/dev/null; then cd logrepo && git rm -rq --ignore-unmatch . ; else mkdir logrepo && cd logrepo && git init -q && git checkout -q -b ci-logs; fi
           cp "$LOGS"/* .
           git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com add -A .
           git -c user.name=rewind-ci -c user.email=rewind-ci@users.noreply.github.com commit -qm "CI logs: run ${GITHUB_RUN_NUMBER} (${JOB_STATUS})"
-          git push -q "$URL" HEAD:refs/heads/ci-logs || echo "::warning::could not save logs branch"
+          git push "$URL" HEAD:refs/heads/ci-logs 2>&1 | sed "s#x-access-token:[^@]*@#***@#" || true
 
   # Runs only when every check in "build" passed (tests, type check, Rust tests, start-up and
   # upgrade check, both installer checks).
